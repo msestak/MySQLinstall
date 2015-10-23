@@ -30,4 +30,4 @@ MYMETA.*
 
 /MySQLinstall-*
 *.log
-
+/fatlib
