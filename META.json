@@ -1,7 +1,7 @@
 {
    "abstract" : "It's new $module",
    "author" : [
-      "mocnii <msestak@irb.hr>"
+      "tar.gz"
    ],
    "dynamic_config" : 0,
    "generated_by" : "Minilla/v2.5.0, CPAN::Meta::Converter version 2.143240",
@@ -32,6 +32,9 @@
          }
       },
       "develop" : {
+         "recommends" : {
+            "Regexp::Debugger" : "0"
+         },
          "requires" : {
             "Test::CPAN::Meta" : "0",
             "Test::MinimumVersion::Fast" : "0.04",
@@ -42,7 +45,20 @@
       },
       "runtime" : {
          "requires" : {
-            "perl" : "5.008001"
+            "Capture::Tiny" : "0",
+            "Carp" : "0",
+            "Config::Std" : "0",
+            "Data::Dumper" : "0",
+            "File::Find::Rule" : "0",
+            "Getopt::Long" : "0",
+            "IO::Prompter" : "0",
+            "Log::Log4perl" : "0",
+            "Path::Tiny" : "0",
+            "Pod::Usage" : "0",
+            "autodie" : "0",
+            "perl" : "5.010001",
+            "strict" : "0",
+            "warnings" : "0"
          }
       },
       "test" : {
@@ -52,5 +68,8 @@
       }
    },
    "release_status" : "unstable",
-   "version" : "0.01"
+   "version" : "0.01",
+   "x_contributors" : [
+      "mocnii <msestak@irb.hr>"
+   ]
 }

@@ -70,7 +70,6 @@ sub run {
     # ... in some function ...
     ##########################
     my $log = Log::Log4perl::get_logger("main");
-	print Dumper($log);
 
     # Logs both to Screen and File appender
     $log->info("This is start of logging for $0");
@@ -332,7 +331,7 @@ sub init_logging {
 	$log->level($log_level);
 	$file_appender->threshold( "TRACE" );
 	#Log::Log4perl->appender_thresholds_adjust(-1, ['Logfile']);
-	print Dumper( Log::Log4perl->appenders() );
+	#print Dumper( Log::Log4perl->appenders() );
 
 
     return;
@@ -378,7 +377,7 @@ sub install_perl {
     $log->logcroak ('install_perl() needs a $param_href' ) unless @_ == 1;
     my ( $param_href ) = @_;   #not used we don't need parameters here
 
-    #check perl version (if larger than 5.10 leave it alone, else install new one)
+    #check perl version
     my $cmd_perl_version = 'perl -v';
     my ($stdout, $stderr, $exit) = capture_output( $cmd_perl_version );
     if ($exit == 0) {
@@ -386,109 +385,103 @@ sub install_perl {
         if ( $stdout =~ m{v(\d+\.(\d+)\.\d+)}g ) {
             my $perl_ver = $1;
             my $ver_num = $2;
-            #say $perl_ver, $ver_num;
-            if ( $ver_num <= 10 ) {
-                $log->warn( "We have Perl $perl_ver and we need to update" );
+            $log->warn( "We have Perl $perl_ver and we need to update" );
 
-                #start perlenv install
-                $log->info( 'Checking if we can install plenv' );
-                my $cmd_plenv = 'git clone git://github.com/tokuhirom/plenv.git ~/.plenv';
-                my ($stdout_env, $stderr_env, $exit_env) = capture_output( $cmd_plenv );
-                my ($git_missing) = $stderr_env =~ m{(git)};
-                my ($plenv_exist) = $stderr_env =~ m{(plenv)};
+            #start perlenv install
+            $log->info( 'Checking if we can install plenv' );
+            my $cmd_plenv = 'git clone git://github.com/tokuhirom/plenv.git ~/.plenv';
+            my ($stdout_env, $stderr_env, $exit_env) = capture_output( $cmd_plenv );
+            my ($git_missing) = $stderr_env =~ m{(git)};
+            my ($plenv_exist) = $stderr_env =~ m{(plenv)};
 
-                if ($exit_env != 0 ) {
-                    if ( $git_missing ) {
-                        $log->warn( 'Need to install git' );
-                        my $cmd_git = 'sudo yum -y install git';
-                        my ($stdout_git, $stderr_git, $exit_git) = capture_output( $cmd_git );
-                        if ($exit_git == 0 ) {
-                            $log->trace( 'git successfully installed' );
-                        }
-                        my $cmd_tools = q{sudo yum -y groupinstall "Development tools"};
-                        system $cmd_tools;
+            if ($exit_env != 0 ) {
+                if ( $git_missing ) {
+                    $log->warn( 'Need to install git' );
+                    my $cmd_git = 'sudo yum -y install git';
+                    my ($stdout_git, $stderr_git, $exit_git) = capture_output( $cmd_git );
+                    if ($exit_git == 0 ) {
+                        $log->trace( 'git successfully installed' );
                     }
-                    elsif ( $plenv_exist ) {
-                        $log->trace( "plenv already installed: $stderr_env" );
-                    }
+                    my $cmd_tools = q{sudo yum -y groupinstall "Development tools"};
+                    system $cmd_tools;
                 }
-                else {
-                    $log->trace( 'Installed plenv' );
-                    
-                    #updating .bash_profile for plenv to work
-                    my $cmd_path = q{echo 'export PATH="$HOME/.plenv/bin:$PATH"' >> ~/.bash_profile};
-                    my $cmd_eval = q{echo 'eval "$(plenv init -)"' >> ~/.bash_profile};
-                    my $cmd_exec = q{source $HOME/.bash_profile};
-                    system ($cmd_path);
-                    system ($cmd_eval);
-                    system ($cmd_exec);
-                    $log->trace( 'Updated $PATH variable and initiliazed plenv' );
-                    
-                    #installing Perl-Build plugin for install function in plenv
-                    my $cmd_perl_build = q{git clone git://github.com/tokuhirom/Perl-Build.git ~/.plenv/plugins/perl-build/};
-                    my ($stdout_bp, $stderr_bp, $exit_bp) = capture_output( $cmd_perl_build );
-                    if ($exit_bp == 0) {
-                        $log->trace( 'Installed Perl-Build plugin for plenv from github' );
-                    }
-
-                    #list all perls available
-                    my $cmd_list_perls = q{plenv install --list};
-                    my ($stdout_list, $stderr_list, $exit_list) = capture_output( $cmd_list_perls );
-                    my @perls = split("\n", $stdout_list);
-                    #say @perls;
-                    
-                    #ask to choose which Perl to install
-                    my $perl_to_install
-                      = prompt 'Choose which Perl version you want to install',
-                      -number,
-                      -menu => [ @perls ],
-                      '>';
-                    my @thread_options = qw/usethreads nothreads/;
-                    my $thread_option
-                      = prompt 'Do you want to install Perl with or without threads?',
-                      -menu => [ @thread_options ],
-                      '>';
-                    $log->trace( "Will install $perl_to_install with $thread_option" );
-
-                    #install Perl
-                    my $cmd_install;
-                    if ($thread_option eq 'nothreads') {
-                        $cmd_install = qq{plenv install -j 8 -Dcc=gcc $perl_to_install};
-                    }
-                    else {
-                        $cmd_install = qq{plenv install -j 8 -Dcc=gcc -D usethreads $perl_to_install};
-                    }
-                    my ($stdout_ins, $stderr_ins, $exit_ins) = capture_output( $cmd_install );
-                    if ($exit_ins == 0) {
-                        $log->trace( "Perl $perl_to_install installed successfully!" );
-                    }
-
-                    #finish installation, set perl as global
-                    my $cmd_rehash = q{plenv rehash};
-                    my $cmd_global = qq{plenv global $perl_to_install};
-                    my $cmd_cpanm = q{plenv install-cpanm};
-                    #my $cmd_lib   = q{sudo cpanm --local-lib=~/perl5 local::lib && eval $(perl -I ~/perl5/lib/perl5/ -Mlocal::lib)};
-                    system ($cmd_rehash);
-                    system ($cmd_global);
-                    my ($stdout_cp, $stderr_cp, $exit_cp) = capture_output( $cmd_cpanm );
-                    if ($exit_cp == 0) {
-                        $log->trace( "Perl $perl_to_install is now global and cpanm installed" );
-                    }
-
-                    #check if right Perl installed
-                    my ($stdout_ver, $stderr_ver, $exit_ver) = capture_output( $cmd_perl_version );
-                    if ($exit_ver == 0) {
-                        $log->info( 'Checking Perl version with perl -v' );
-                        if ( $stdout_ver =~ m{v(\d+\.(\d+)\.\d+)}g ) {
-                            my $perl_ver2 = $1;
-                            $log->warn( "We have Perl $perl_ver2 " );
-                        }
-                    }
+                elsif ( $plenv_exist ) {
+                    $log->trace( "plenv already installed: $stderr_env" );
                 }
             }
             else {
-                $log->debug( "Move along Perl version is fine: $perl_ver" );
-            }
+                $log->trace( 'Installed plenv' );
+                
+                #updating .bash_profile for plenv to work
+                my $cmd_path = q{echo 'export PATH="$HOME/.plenv/bin:$PATH"' >> ~/.bash_profile};
+                my $cmd_eval = q{echo 'eval "$(plenv init -)"' >> ~/.bash_profile};
+                my $cmd_exec = q{source $HOME/.bash_profile};
+                system ($cmd_path);
+                system ($cmd_eval);
+                system ($cmd_exec);
+                $log->trace( 'Updated $PATH variable and initiliazed plenv' );
+                
+                #installing Perl-Build plugin for install function in plenv
+                my $cmd_perl_build = q{git clone git://github.com/tokuhirom/Perl-Build.git ~/.plenv/plugins/perl-build/};
+                my ($stdout_bp, $stderr_bp, $exit_bp) = capture_output( $cmd_perl_build );
+                if ($exit_bp == 0) {
+                    $log->trace( 'Installed Perl-Build plugin for plenv from github' );
+                }
+
+                #list all perls available
+                my $cmd_list_perls = q{plenv install --list};
+                my ($stdout_list, $stderr_list, $exit_list) = capture_output( $cmd_list_perls );
+                my @perls = split("\n", $stdout_list);
+                #say @perls;
+                
+                #ask to choose which Perl to install
+                my $perl_to_install
+                  = prompt 'Choose which Perl version you want to install',
+                  -number,
+                  -menu => [ @perls ],
+                  '>';
+                my @thread_options = qw/usethreads nothreads/;
+                my $thread_option
+                  = prompt 'Do you want to install Perl with or without threads?',
+                  -menu => [ @thread_options ],
+                  '>';
+                $log->trace( "Will install $perl_to_install with $thread_option" );
+
+                #install Perl
+                my $cmd_install;
+                if ($thread_option eq 'nothreads') {
+                    $cmd_install = qq{plenv install -j 8 -Dcc=gcc $perl_to_install};
+                }
+                else {
+                    $cmd_install = qq{plenv install -j 8 -Dcc=gcc -D usethreads $perl_to_install};
+                }
+                my ($stdout_ins, $stderr_ins, $exit_ins) = capture_output( $cmd_install );
+                if ($exit_ins == 0) {
+                    $log->trace( "Perl $perl_to_install installed successfully!" );
+                }
+
+                #finish installation, set perl as global
+                my $cmd_rehash = q{plenv rehash};
+                my $cmd_global = qq{plenv global $perl_to_install};
+                my $cmd_cpanm = q{plenv install-cpanm};
+                #my $cmd_lib   = q{sudo cpanm --local-lib=~/perl5 local::lib && eval $(perl -I ~/perl5/lib/perl5/ -Mlocal::lib)};
+                system ($cmd_rehash);
+                system ($cmd_global);
+                my ($stdout_cp, $stderr_cp, $exit_cp) = capture_output( $cmd_cpanm );
+                if ($exit_cp == 0) {
+                    $log->trace( "Perl $perl_to_install is now global and cpanm installed" );
+                }
+
+                #check if right Perl installed
+                my ($stdout_ver, $stderr_ver, $exit_ver) = capture_output( $cmd_perl_version );
+                if ($exit_ver == 0) {
+                    $log->info( 'Checking Perl version with perl -v' );
+                    if ( $stdout_ver =~ m{v(\d+\.(\d+)\.\d+)}g ) {
+                        my $perl_ver2 = $1;
+                        $log->warn( "We have Perl $perl_ver2 " );
+                    }
+                }
+                }
         }
     }
     else {
