@@ -15,6 +15,7 @@ use Capture::Tiny qw/capture/;
 use Data::Dumper;
 #use Regexp::Debugger;
 use Log::Log4perl;
+use Log::Log4perl qw(:levels);
 use File::Find::Rule;
 use IO::Prompter;
 use Config::Std { def_sep => '=' };   #MySQL uses =
@@ -73,6 +74,7 @@ sub run {
 
     # Logs both to Screen and File appender
     $log->info("This is start of logging for $0");
+    $log->trace("This is example of trace logging for $0");
 
     #get dump of param_href if -v (VERBOSE) flag is on (for debugging)
     my $dump_print = sprintf( Dumper($param_href) ) if $VERBOSE;
@@ -197,7 +199,7 @@ sub get_parameters_from_cmd {
 # Throws     : croaks if it receives parameters
 # Comments   : used to setup a logging framework
 # See Also   : Log::Log4perl at https://metacpan.org/pod/Log::Log4perl
-sub init_logging {
+sub init_logging2 {
     croak 'init_logging() needs VERBOSE parameter' unless @_ == 1;
     my ($VERBOSE) = @_;
 
@@ -260,6 +262,82 @@ sub init_logging {
 
     return;
 }
+
+
+sub init_logging {
+    croak 'init_logging() needs VERBOSE parameter' unless @_ == 1;
+    my ($VERBOSE) = @_;
+
+    #create log file in same dir where script is running
+    my $dir_out = path($0)->parent->absolute;    #removes perl script and takes absolute path from rest of path
+                                                 #say '$dir_out:', $dir_out;
+    my ($app_name) = path($0)->basename =~ m{\A(.+)\.(?:.+)\z};   #takes name of the script and removes .pl or .pm or .t
+                                                                  #say '$app_name:', $app_name;
+    my $logfile = path( $dir_out, $app_name . '.log' )->canonpath;    #combines all of above with .log
+                                                                      #say '$logfile:', $logfile;
+    #colored output on windows
+    my $osname = $^O;
+    if ( $osname eq 'MSWin32' ) {
+        require Win32::Console::ANSI;                                 #require needs import
+        Win32::Console::ANSI->import();
+    }
+
+    #enable different levels based on VERBOSE flag
+    my $log_level;
+    foreach ($VERBOSE) {
+        when (0) { $log_level = 'INFO'; }
+        when (1) { $log_level = 'DEBUG'; }
+        when (2) { $log_level = 'TRACE'; }
+        when (-1) { $log_level = 'OFF'; }
+        default  { $log_level = 'INFO'; }
+    }
+
+    #levels:
+    #ALL, TRACE, DEBUG, INFO, WARN, ERROR, FATAL, OFF
+    ###############################################################################
+    #                              Log::Log4perl Conf                             #
+    ###############################################################################
+    # Configuration is dynamic
+	# Define a category logger
+	my $log = Log::Log4perl->get_logger("main");
+ 
+    # Define a layout
+	my $layout = Log::Log4perl::Layout::PatternLayout->new("[%d{yyyy/MM/dd HH:mm:ss,SSS}]%m%n");
+ 
+   # Define a file appender
+	my $file_appender = Log::Log4perl::Appender->new(
+                        "Log::Log4perl::Appender::File",
+                        name      => "Logfile",
+                        filename  => "$logfile",
+						autoflush => 1,
+						umask => 022,
+						header_text => "INVOCATION:$0 @ARGV", 
+						#Threshold => "TRACE",
+					);
+ 
+   # Define a stderr appender
+	my $stderr_appender =  Log::Log4perl::Appender->new(
+                        "Log::Log4perl::Appender::ScreenColoredLevels",
+                        name      => "Screen",
+                        stderr    => 1,
+					);
+ 
+   # Have both appenders use the same layout (could be different)
+	$stderr_appender->layout($layout);
+	$file_appender->layout($layout);
+
+ 
+	$log->add_appender($stderr_appender);
+	$log->add_appender($file_appender);
+	$log->level($log_level);
+	$file_appender->threshold( "TRACE" );
+	#Log::Log4perl->appender_thresholds_adjust(-1, ['Logfile']);
+	print Dumper( Log::Log4perl->appenders() );
+
+
+    return;
+}
+
 
 
 ### INTERNAL UTILITY ###
@@ -432,11 +510,42 @@ MySQLinstall - It's new $module
 
 =head1 SYNOPSIS
 
-    use MySQLinstall;
+ perl install_mysql_within_sandbox.pl --mode=install_perl
+
+ perl install_mysql_within_sandbox.pl --mode=install_sandbox --sandbox=/msestak/sandboxes/ --opt=/msestak/opt/mysql/
+
+ perl install_mysql_within_sandbox.pl --mode=wget_mysql -url http://dev.mysql.com/get/Downloads/MySQL-5.5/mysql-5.5.43-linux2.6-x86_64.tar.gz
+
+ perl install_mysql_within_sandbox.pl --mode=wget_percona -url https://www.percona.com/downloads/Percona-Server-5.6/Percona-Server-5.6.24-72.2/binary/tarball/Percona-Server-5.6.24-rel72.2-Linux.x86_64.ssl101.tar.gz -url_tokudb https://www.percona.com/downloads/Percona-Server-5.6/Percona-Server-5.6.24-72.2/binary/tarball/Percona-Server-5.6.24-rel72.2-TokuDB.Linux.x86_64.ssl101.tar.gz
+
+ perl ./bin/install_mysql_within_sandbox.pl --mode=install_mysql -i ./download/mysql-5.6.26-linux-glibc2.5-x86_64.tar.gz
+ perl ./bin/install_mysql_within_sandbox.pl --mode=install_mysql --in=./download/Percona-Server-5.6.25-rel73.1-Linux.x86_64.ssl101.tar.gz
+
+ perl ./bin/install_mysql_within_sandbox.pl --mode=edit_tokudb --opt=/home/msestak/opt/mysql/5.6.25/ --sand=/home/msestak/sandboxes/msb_5_6_25/
+
+ perl install_mysql_within_sandbox.pl --mode=edit_deep -i deep-mysql-5.6.25-community-plugin-3.2.0.19654-1.el6.x86_64.rpm --sand=/msestak/sandboxes/msb_5_6_25/ --opt=/msestak/opt/mysql/5.6.25/
+ or with reporting
+ perl ./bin/install_mysql_within_sandbox.pl --mode=edit_deep_report -i ./download/deep-mysql-5.6.26-community-plugin-3.2.0.19896.el6.x86_64.tar.gz --sand=/home/msestak/sandboxes/msb_5_6_26 --opt=/home/msestak/opt/mysql/5.6.26
+
+
 
 =head1 DESCRIPTION
 
 MySQLinstall is ...
+
+ --mode=mode				Description
+ --mode=install_perl		installs latest Perl with perlenv and cpanm
+ --mode=install_sandbox		installs MySQL::Sandbox and prompts for modification of .bashrc
+ --mode=wget_mysql			downloads MySQL from Oracle
+ --mode=wget_percona		downloads Percona Server with TokuDB
+ --mode=install_mysql		installs MySQL and modifies my.cnf for performance
+ --mode=edit_deep_report	installs TokuDB plugin
+ --mode=edit_tokudb			installs Deep plugin
+ 
+ For help write:
+ perl install_mysql_within_sandbox.pl -h
+ perl install_mysql_within_sandbox.pl -m
+
 
 =head1 LICENSE
 
@@ -448,6 +557,19 @@ it under the same terms as Perl itself.
 =head1 AUTHOR
 
 mocnii E<lt>msestak@irb.hrE<gt>
+
+=head1 EXAMPLE
+ perl ./bin/install_mysql_within_sandbox.pl --mode=install_mysql --in=./download/Percona-Server-5.6.25-rel73.1-Linux.x86_64.ssl101.tar.gz
+ perl ./bin/install_mysql_within_sandbox.pl --mode=edit_tokudb --opt=/home/msestak/opt/mysql/5.6.25/ --sand=/home/msestak/sandboxes/msb_5_6_25/
+ 
+ perl install_mysql_within_sandbox.pl --mode=install_mysql -i mysql-5.6.24-linux-glibc2.5-x86_64.tar.gz
+ perl install_mysql_within_sandbox.pl --mode=edit_deep -i deep-mysql-5.6.24-community-plugin-3.2.0.19297-1.el6.x86_64.rpm --sand=/msestak/sandboxes/msb_5_6_24/ --opt=/msestak/opt/mysql/5.6.24/
+
+ perl install_mysql_within_sandbox.pl --mode=install_mysql -i mysql-5.6.24-linux-glibc2.5-x86_64.tar.gz
+ perl install_mysql_within_sandbox.pl --mode=edit_deep_report -i deep-mysql-5.6.24-community-plugin-3.2.0.19654.el6.x86_64.tar.gz --sand=/msestak/sandboxes/msb_5_6_24/ --opt=/msestak/opt/mysql/5.6.24/
+
+ [msestak@tiktaalik benchmark_mysql]$ perl ./bin/install_mysql_within_sandbox.pl --mode=install_mysql -i ./download/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
+ [msestak@tiktaalik benchmark_mysql]$ perl ./bin/install_mysql_within_sandbox.pl --mode=edit_deep_report -i ./download/deep-mysql-5.6.27-community-plugin-3.3.0.20340.el6.x86_64.tar.gz --sand=/home/msestak/sandboxes/msb_5_6_27/ --opt=/home/msestak/opt/mysql/5.6.27/
 
 =cut
 
