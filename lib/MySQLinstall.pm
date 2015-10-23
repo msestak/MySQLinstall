@@ -4,7 +4,7 @@ package MySQLinstall;
 use 5.010001;
 use strict;
 use warnings;
-no warnings 'experimental::smartmatch';
+use experimental qw(smartmatch);
 use autodie;
 use Carp;
 use Path::Tiny;
