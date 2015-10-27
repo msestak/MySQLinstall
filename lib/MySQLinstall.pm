@@ -264,12 +264,19 @@ sub init_logging2 {
     my ($VERBOSE) = @_;
 
     #create log file in same dir where script is running
-    my $dir_out = path($0)->parent->absolute;    #removes perl script and takes absolute path from rest of path
-                                                 #say '$dir_out:', $dir_out;
-    my ($app_name) = path($0)->basename =~ m{\A(.+)\.(?:.+)\z};   #takes name of the script and removes .pl or .pm or .t
-                                                                  #say '$app_name:', $app_name;
-    my $logfile = path( $dir_out, $app_name . '.log' )->canonpath;    #combines all of above with .log
-                                                                      #say '$logfile:', $logfile;
+	#removes perl script and takes absolute path from rest of path
+	my ($volume,$dir_out,$perl_script) = splitpath( $0 );
+	#say '$dir_out:', $dir_out;
+	$dir_out = rel2abs($dir_out);
+	#say '$dir_out:', $dir_out;
+
+    my ($app_name) = $perl_script =~ m{\A(.+)\.(?:.+)\z};   #takes name of the script and removes .pl or .pm or .t
+    #say '$app_name:', $app_name;
+    my $logfile = catfile( $volume, $dir_out, $app_name . '.log' );    #combines all of above with .log
+	#say '$logfile:', $logfile;
+	$logfile = canonpath($logfile);
+	#say '$logfile:', $logfile;
+
     #colored output on windows
     my $osname = $^O;
     if ( $osname eq 'MSWin32' ) {
@@ -279,13 +286,11 @@ sub init_logging2 {
 
     #enable different levels based on VERBOSE flag
     my $log_level;
-    foreach ($VERBOSE) {
-        when (0) { $log_level = 'INFO'; }
-        when (1) { $log_level = 'DEBUG'; }
-        when (2) { $log_level = 'TRACE'; }
-        when (-1) { $log_level = 'OFF'; }
-        default  { $log_level = 'INFO'; }
-    }
+    if    ($VERBOSE == 0)  { $log_level = 'INFO';  }
+    elsif ($VERBOSE == 1)  { $log_level = 'DEBUG'; }
+    elsif ($VERBOSE == 2)  { $log_level = 'TRACE'; }
+    elsif ($VERBOSE == -1) { $log_level = 'OFF';   }
+	else                   { $log_level = 'INFO';  }
 
     #levels:
     #ALL, TRACE, DEBUG, INFO, WARN, ERROR, FATAL, OFF
@@ -333,28 +338,29 @@ sub init_logging2 {
     return;
 }
 
-
-
 ### INTERNAL UTILITY ###
-# Usage      : capture_output();
+# Usage      : my ($stdout, $stderr, $exit) = capture_output( $cmd, $param_href );
 # Purpose    : accepts command, executes it, captures output and returns it in vars
 # Returns    : STDOUT, STDERR and EXIT as vars
 # Parameters : ($cmd_to_execute)
 # Throws     : 
-# Comments   : 
+# Comments   : second param is verbose flag (default off)
 # See Also   :
 sub capture_output {
-    croak 'capture_output() needs a $cmd' unless @_ == 1;
-    my ($cmd) = @_;
     my $log = Log::Log4perl::get_logger("main");
+    $log->logdie( 'capture_output() needs a $cmd' ) unless (@_ ==  2 or 1);
+    my ($cmd, $param_href) = @_;
 
-    $log->info( 'COMMAND is: ', "$cmd" );
+    my $VERBOSE = defined $param_href->{VERBOSE}  ? $param_href->{VERBOSE}  : undef;   #default is silent
+    $log->info(qq|Report: COMMAND is: $cmd|);
 
     my ( $stdout, $stderr, $exit ) = capture {
         system($cmd );
     };
 
-	#$log->trace( 'STDOUT  is: ', "$stdout", "\n", 'STDERR  is: ', "$stderr", "\n", 'EXIT    is: ', "$exit" );
+    if ($VERBOSE == 2) {
+        $log->trace( 'STDOUT is: ', "$stdout", "\n", 'STDERR  is: ', "$stderr", "\n", 'EXIT   is: ', "$exit" );
+    }
 
     return  $stdout, $stderr, $exit;
 }
@@ -371,11 +377,11 @@ sub capture_output {
 sub install_perl {
     my $log = Log::Log4perl::get_logger("main");
     $log->logcroak ('install_perl() needs a $param_href' ) unless @_ == 1;
-    my ( $param_href ) = @_;   #not used we don't need parameters here
+    my ( $param_href ) = @_;
 
     #check perl version
     my $cmd_perl_version = 'perl -v';
-    my ($stdout, $stderr, $exit) = capture_output( $cmd_perl_version );
+    my ($stdout, $stderr, $exit) = capture_output( $cmd_perl_version, $param_href );
     if ($exit == 0) {
         $log->info( 'Checking Perl version with perl -v' );
         if ( $stdout =~ m{v(\d+\.(\d+)\.\d+)}g ) {
@@ -386,7 +392,7 @@ sub install_perl {
             #start perlenv install
             $log->info( 'Checking if we can install plenv' );
             my $cmd_plenv = 'git clone git://github.com/tokuhirom/plenv.git ~/.plenv';
-            my ($stdout_env, $stderr_env, $exit_env) = capture_output( $cmd_plenv );
+            my ($stdout_env, $stderr_env, $exit_env) = capture_output( $cmd_plenv, $param_href );
             my ($git_missing) = $stderr_env =~ m{(git)};
             my ($plenv_exist) = $stderr_env =~ m{(plenv)};
 
@@ -394,7 +400,7 @@ sub install_perl {
                 if ( $git_missing ) {
                     $log->warn( 'Need to install git' );
                     my $cmd_git = 'sudo yum -y install git';
-                    my ($stdout_git, $stderr_git, $exit_git) = capture_output( $cmd_git );
+                    my ($stdout_git, $stderr_git, $exit_git) = capture_output( $cmd_git, $param_href );
                     if ($exit_git == 0 ) {
                         $log->trace( 'git successfully installed' );
                     }
@@ -419,14 +425,14 @@ sub install_perl {
                 
                 #installing Perl-Build plugin for install function in plenv
                 my $cmd_perl_build = q{git clone git://github.com/tokuhirom/Perl-Build.git ~/.plenv/plugins/perl-build/};
-                my ($stdout_bp, $stderr_bp, $exit_bp) = capture_output( $cmd_perl_build );
+                my ($stdout_bp, $stderr_bp, $exit_bp) = capture_output( $cmd_perl_build, $param_href );
                 if ($exit_bp == 0) {
                     $log->trace( 'Installed Perl-Build plugin for plenv from github' );
                 }
 
                 #list all perls available
                 my $cmd_list_perls = q{plenv install --list};
-                my ($stdout_list, $stderr_list, $exit_list) = capture_output( $cmd_list_perls );
+                my ($stdout_list, $stderr_list, $exit_list) = capture_output( $cmd_list_perls, $param_href );
                 my @perls = split("\n", $stdout_list);
                 #say @perls;
                 
@@ -451,7 +457,7 @@ sub install_perl {
                 else {
                     $cmd_install = qq{plenv install -j 8 -Dcc=gcc -D usethreads $perl_to_install};
                 }
-                my ($stdout_ins, $stderr_ins, $exit_ins) = capture_output( $cmd_install );
+                my ($stdout_ins, $stderr_ins, $exit_ins) = capture_output( $cmd_install, $param_href );
                 if ($exit_ins == 0) {
                     $log->trace( "Perl $perl_to_install installed successfully!" );
                 }
@@ -463,13 +469,13 @@ sub install_perl {
                 #my $cmd_lib   = q{sudo cpanm --local-lib=~/perl5 local::lib && eval $(perl -I ~/perl5/lib/perl5/ -Mlocal::lib)};
                 system ($cmd_rehash);
                 system ($cmd_global);
-                my ($stdout_cp, $stderr_cp, $exit_cp) = capture_output( $cmd_cpanm );
+                my ($stdout_cp, $stderr_cp, $exit_cp) = capture_output( $cmd_cpanm, $param_href );
                 if ($exit_cp == 0) {
                     $log->trace( "Perl $perl_to_install is now global and cpanm installed" );
                 }
 
                 #check if right Perl installed
-                my ($stdout_ver, $stderr_ver, $exit_ver) = capture_output( $cmd_perl_version );
+                my ($stdout_ver, $stderr_ver, $exit_ver) = capture_output( $cmd_perl_version, $param_href );
                 if ($exit_ver == 0) {
                     $log->info( 'Checking Perl version with perl -v' );
                     if ( $stdout_ver =~ m{v(\d+\.(\d+)\.\d+)}g ) {
