@@ -4,18 +4,14 @@ package MySQLinstall;
 use 5.010001;
 use strict;
 use warnings;
-use experimental qw(smartmatch);
-use autodie;
+use File::Spec::Functions qw(:ALL);
 use Carp;
-use Path::Tiny;
-use v5.010;
 use Getopt::Long;
 use Pod::Usage;
 use Capture::Tiny qw/capture/;
 use Data::Dumper;
 #use Regexp::Debugger;
 use Log::Log4perl;
-use Log::Log4perl qw(:levels);
 use File::Find::Rule;
 use IO::Prompter;
 use Config::Std { def_sep => '=' };   #MySQL uses =
@@ -156,14 +152,14 @@ sub get_parameters_from_cmd {
 		print STDERR 'My @ARGV: {', join( "} {", @arg_copy ), '}', "\n";
 	
 		if ($INFILE) {
-			say 'My input file: ', path($INFILE);
-			$INFILE = path($INFILE)->absolute->canonpath;
-			say 'My absolute input file: ', path($INFILE);
+			say 'My input file: ', canonpath($INFILE);
+			$INFILE = rel2abs($INFILE);
+			say 'My absolute input file: ', canonpath($INFILE);
 		}
 		if ($OUT) {
-			say 'My output path: ', path($OUT);
-			$OUT = path($OUT)->absolute->canonpath;
-			say 'My absolute output path: ', path($OUT);
+			say 'My output path: ', canonpath($OUT);
+			$OUT = rel2abs($OUT);
+			say 'My absolute output path: ', canonpath($OUT);
 		}
 	}
 	else {
@@ -198,17 +194,24 @@ sub get_parameters_from_cmd {
 # Throws     : croaks if it receives parameters
 # Comments   : used to setup a logging framework
 # See Also   : Log::Log4perl at https://metacpan.org/pod/Log::Log4perl
-sub init_logging2 {
+sub init_logging {
     croak 'init_logging() needs VERBOSE parameter' unless @_ == 1;
     my ($VERBOSE) = @_;
 
     #create log file in same dir where script is running
-    my $dir_out = path($0)->parent->absolute;    #removes perl script and takes absolute path from rest of path
-                                                 #say '$dir_out:', $dir_out;
-    my ($app_name) = path($0)->basename =~ m{\A(.+)\.(?:.+)\z};   #takes name of the script and removes .pl or .pm or .t
-                                                                  #say '$app_name:', $app_name;
-    my $logfile = path( $dir_out, $app_name . '.log' )->canonpath;    #combines all of above with .log
-                                                                      #say '$logfile:', $logfile;
+	#removes perl script and takes absolute path from rest of path
+	my ($volume,$dir_out,$perl_script) = splitpath( $0 );
+	#say '$dir_out:', $dir_out;
+	$dir_out = rel2abs($dir_out);
+	#say '$dir_out:', $dir_out;
+
+    my ($app_name) = $perl_script =~ m{\A(.+)\.(?:.+)\z};   #takes name of the script and removes .pl or .pm or .t
+    #say '$app_name:', $app_name;
+    my $logfile = catfile( $volume, $dir_out, $app_name . '.log' );    #combines all of above with .log
+	#say '$logfile:', $logfile;
+	$logfile = canonpath($logfile);
+	#say '$logfile:', $logfile;
+
     #colored output on windows
     my $osname = $^O;
     if ( $osname eq 'MSWin32' ) {
@@ -218,13 +221,11 @@ sub init_logging2 {
 
     #enable different levels based on VERBOSE flag
     my $log_level;
-    foreach ($VERBOSE) {
-        when (0) { $log_level = 'INFO'; }
-        when (1) { $log_level = 'DEBUG'; }
-        when (2) { $log_level = 'TRACE'; }
-        when (-1) { $log_level = 'OFF'; }
-        default  { $log_level = 'INFO'; }
-    }
+    if    ($VERBOSE == 0)  { $log_level = 'INFO';  }
+    elsif ($VERBOSE == 1)  { $log_level = 'DEBUG'; }
+    elsif ($VERBOSE == 2)  { $log_level = 'TRACE'; }
+    elsif ($VERBOSE == -1) { $log_level = 'OFF';   }
+	else                   { $log_level = 'INFO';  }
 
     #levels:
     #TRACE, DEBUG, INFO, WARN, ERROR, FATAL
@@ -253,17 +254,12 @@ sub init_logging2 {
 
     # ... passed as a reference to init()
     Log::Log4perl::init( \$conf );
-	print 'conf', Dumper($conf);
-	print 'appender', Dumper( $Log::Log4perl::Logger::APPENDER_BY_NAME{'Logfile'} );
-	#print 'appender', Dumper( $Log::Log4perl::Logger::APPENDER_BY_NAME{'Screen'} );
-	my $ap = $Log::Log4perl::Logger::APPENDER_BY_NAME{'Logfile'};
-	$ap->threshold( 'TRACE' );
 
     return;
 }
 
 
-sub init_logging {
+sub init_logging2 {
     croak 'init_logging() needs VERBOSE parameter' unless @_ == 1;
     my ($VERBOSE) = @_;
 
