@@ -46,21 +46,19 @@ sub run {
     my $VERBOSE    = $param_href->{VERBOSE};
     my $QUIET      = $param_href->{QUIET};
     my @MODE     = @{ $param_href->{MODE} };
-	my $URL      = $param_href->{URL};
-    my $URL_TOKUDB = $param_href->{URL_TOKUDB};
-	my $OPT      = $param_href->{OPT};
-    my $SANDBOX = $param_href->{SANDBOX};
-    my $INFILE   = $param_href->{INFILE};
-    my $OUT      = $param_href->{OUT};   #not used
-    my $HOST     = $param_href->{HOST};
-    my $DATABASE = $param_href->{DATABASE};   #not used
-    my $USER     = $param_href->{USER};
-    my $PASSWORD = $param_href->{PASSWORD};
-    my $PORT     = $param_href->{PORT};
-    my $SOCKET   = $param_href->{SOCKET};
+	my $URL      = $param_href->{url};
+	my $OPT      = $param_href->{opt};
+    my $SANDBOX = $param_href->{sandbox};
+    my $INFILE   = $param_href->{infile};
+    my $OUT      = $param_href->{out};   #not used
+    my $HOST     = $param_href->{host};
+    my $DATABASE = $param_href->{database};   #not used
+    my $USER     = $param_href->{user};
+    my $PASSWORD = $param_href->{password};
+    my $PORT     = $param_href->{port};
+    my $SOCKET   = $param_href->{socket};
 
     #start logging for the rest of program (without capturing of parameters)
-	
     init_logging($VERBOSE);
     ##########################
     # ... in some function ...
@@ -116,73 +114,90 @@ sub run {
 sub get_parameters_from_cmd {
 
     #no logger here
+	# setup config file location
+	my ($volume, $dir_out, $perl_script) = splitpath( $0 );
+	$dir_out = rel2abs($dir_out);
+    my ($app_name) = $perl_script =~ m{\A(.+)\.(?:.+)\z};
+	$app_name = lc $app_name;
+    my $config_file = catfile($volume, $dir_out, $app_name . '.cnf' );
+	$config_file = canonpath($config_file);
+
+	#read config to setup defaults
+	read_config($config_file => my %config);
+	#print 'config:', Dumper(\%config);
+	#push all options into one hash no matter the section
+	my %opts;
+	foreach my $key (keys %config) {
+		%opts = (%opts, %{ $config{$key} });
+	}
+	#say 'opts:', Dumper(\%opts);
+
+	#cli part
 	my @arg_copy = @ARGV;
-    my ( $help, $man, $URL, $SANDBOX, $OPT, $INFILE, $OUT, $HOST, $DATABASE, $USER, $PASSWORD, $PORT, $SOCKET, @MODE );
-    my $QUIET   = 0;    #by default it is verbose with INFO level
-    my $VERBOSE = 0;    #default INFO log level
+	my (%cli, @MODE);
+	$cli{QUIET} = 0;
+	$cli{VERBOSE} = 0;
 
+	#MODE, QUIET and VERBOSE can only be set on command line
     GetOptions(
-        'help|h'        => \$help,
-        'man|m'         => \$man,
-        'url=s'         => \$URL,
-        'sandbox|sand=s'=> \$SANDBOX,
-        'opt=s'         => \$OPT,
+        'help|h'        => \$cli{help},
+        'man|m'         => \$cli{man},
+        'url=s'         => \$cli{url},
+        'sandbox|sand=s'=> \$cli{sandbox},
+        'opt=s'         => \$cli{opt},
 
-        'infile|if=s'   => \$INFILE,
-        'out|o=s'       => \$OUT,
-        'host|h=s'      => \$HOST,
-        'database|d=s'  => \$DATABASE,
-        'user|u=s'      => \$USER,
-        'password|p=s'  => \$PASSWORD,
-        'port|po=i'     => \$PORT,
-        'socket|s=s'    => \$SOCKET,
-        'mode|mo=s{1,}' => \@MODE,       #accepts 1 or more arguments
-        'quiet|q'       => \$QUIET,      #flag
-        'verbose+'      => \$VERBOSE,    #flag
+        'infile|if=s'   => \$cli{infile},
+        'out|o=s'       => \$cli{out},
+        'host|h=s'      => \$cli{host},
+        'database|d=s'  => \$cli{database},
+        'user|u=s'      => \$cli{user},
+        'password|p=s'  => \$cli{password},
+        'port|po=i'     => \$cli{port},
+        'socket|s=s'    => \$cli{socket},
+        'mode|mo=s{1,}' => \$cli{MODE},       #accepts 1 or more arguments
+        'quiet|q'       => \$cli{QUIET},      #flag
+        'verbose+'      => \$cli{VERBOSE},    #flag
     ) or pod2usage( -verbose => 1 );
 
-    @MODE = split( /,/, join( ',', @MODE ) );
-    die 'No @MODE specified on command line' unless @MODE;
-
-    pod2usage( -verbose => 1 ) if $help;
-    pod2usage( -verbose => 2 ) if $man;
-
-	#if not -q or --quit print all this (else be quiet)
-	if ($QUIET == 0) {
-		print STDERR 'My @ARGV: {', join( "} {", @arg_copy ), '}', "\n";
+	#you can specify multiple modes at the same time
+	@MODE = split( /,/, $cli{MODE} );
+	$cli{MODE} = \@MODE;
+	die 'No MODE specified on command line' unless $cli{MODE};
 	
-		if ($INFILE) {
-			say 'My input file: ', canonpath($INFILE);
-			$INFILE = rel2abs($INFILE);
-			say 'My absolute input file: ', canonpath($INFILE);
+	pod2usage( -verbose => 1 ) if $cli{help};
+	pod2usage( -verbose => 2 ) if $cli{man};
+	
+	#if not -q or --quit print all this (else be quiet)
+	if ($cli{QUIET} == 0) {
+		print STDERR 'My @ARGV: {', join( "} {", @arg_copy ), '}', "\n";
+		#no warnings 'uninitialized';
+		print STDERR 'Extra options from config: {', join( "} {", %opts), '}', "\n";
+	
+		if ($cli{infile}) {
+			say 'My input file: ', canonpath($cli{infile});
+			$cli{infile} = rel2abs($cli{infile});
+			$cli{infile} = canonpath($cli{infile});
+			say "My absolute input file: $cli{infile}";
 		}
-		if ($OUT) {
-			say 'My output path: ', canonpath($OUT);
-			$OUT = rel2abs($OUT);
-			say 'My absolute output path: ', canonpath($OUT);
+		if ($cli{out}) {
+			say 'My output path: ', canonpath($cli{out});
+			$cli{out} = rel2abs($cli{out});
+			$cli{out} = canonpath($cli{out});
+			say "My absolute output path: $cli{out}";
 		}
 	}
 	else {
-		$VERBOSE = -1;
+		$cli{VERBOSE} = -1;   #and logging is OFF
+	}
+	
+	#insert config values into cli options if cli is not present on command line
+	foreach my $key (keys %cli) {
+		if ( ! defined $cli{$key} ) {
+			$cli{$key} = $opts{$key};
+		}
 	}
 
-    return (
-        {   MODE     => \@MODE,
-            VERBOSE  => $VERBOSE,
-            QUIET    => $QUIET,
-            INFILE   => $INFILE,
-            URL      => $URL,
-            SANDBOX  => $SANDBOX,
-            OPT      => $OPT,
-            OUT      => $OUT,
-            HOST     => $HOST,
-            DATABASE => $DATABASE,
-            USER     => $USER,
-            PASSWORD => $PASSWORD,
-            PORT     => $PORT,
-            SOCKET   => $SOCKET,
-        }
-    );
+    return ( \%cli );
 }
 
 
