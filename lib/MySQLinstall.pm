@@ -39,13 +39,13 @@ run() if !caller() or (caller)[0] eq 'DB';
 sub run {
     croak 'main() does not need parameters' unless @_ == 0;
 
-    #first capture parameters to enable VERBOSE flag for logging
+    #first capture parameters to enable verbose flag for logging
     my ($param_href) = get_parameters_from_cmd();
 
     #preparation of parameters
-    my $VERBOSE    = $param_href->{VERBOSE};
-    my $QUIET      = $param_href->{QUIET};
-    my @MODE     = @{ $param_href->{MODE} };
+    my $verbose    = $param_href->{verbose};
+    my $quiet      = $param_href->{quiet};
+    my @mode     = @{ $param_href->{mode} };
 	my $URL      = $param_href->{url};
 	my $OPT      = $param_href->{opt};
     my $SANDBOX = $param_href->{sandbox};
@@ -59,7 +59,7 @@ sub run {
     my $SOCKET   = $param_href->{socket};
 
     #start logging for the rest of program (without capturing of parameters)
-    init_logging($VERBOSE);
+    init_logging($verbose);
     ##########################
     # ... in some function ...
     ##########################
@@ -69,9 +69,9 @@ sub run {
     $log->info("This is start of logging for $0");
     $log->trace("This is example of trace logging for $0");
 
-    #get dump of param_href if -v (VERBOSE) flag is on (for debugging)
-    my $dump_print = sprintf( Dumper($param_href) ) if $VERBOSE;
-    $log->debug( '$param_href = ', "$dump_print" ) if $VERBOSE;
+    #get dump of param_href if -v (verbose) flag is on (for debugging)
+    my $dump_print = sprintf( Dumper($param_href) ) if $verbose;
+    $log->debug( '$param_href = ', "$dump_print" ) if $verbose;
 
     #call write modes (different subs that print different jobs)
 	my %dispatch = (
@@ -86,7 +86,7 @@ sub run {
 
     );
 
-    foreach my $mode (@MODE) {
+    foreach my $mode (@mode) {
         if ( exists $dispatch{$mode} ) {
             $log->info("RUNNING ACTION for mode: ", $mode);
 
@@ -134,11 +134,11 @@ sub get_parameters_from_cmd {
 
 	#cli part
 	my @arg_copy = @ARGV;
-	my (%cli, @MODE);
-	$cli{QUIET} = 0;
-	$cli{VERBOSE} = 0;
+	my (%cli, @mode);
+	$cli{quiet} = 0;
+	$cli{verbose} = 0;
 
-	#MODE, QUIET and VERBOSE can only be set on command line
+	#mode, quiet and verbose can only be set on command line
     GetOptions(
         'help|h'        => \$cli{help},
         'man|m'         => \$cli{man},
@@ -154,21 +154,21 @@ sub get_parameters_from_cmd {
         'password|p=s'  => \$cli{password},
         'port|po=i'     => \$cli{port},
         'socket|s=s'    => \$cli{socket},
-        'mode|mo=s{1,}' => \$cli{MODE},       #accepts 1 or more arguments
-        'quiet|q'       => \$cli{QUIET},      #flag
-        'verbose+'      => \$cli{VERBOSE},    #flag
+        'mode|mo=s{1,}' => \$cli{mode},       #accepts 1 or more arguments
+        'quiet|q'       => \$cli{quiet},      #flag
+        'verbose+'      => \$cli{verbose},    #flag
     ) or pod2usage( -verbose => 1 );
 
 	#you can specify multiple modes at the same time
-	@MODE = split( /,/, $cli{MODE} );
-	$cli{MODE} = \@MODE;
-	die 'No MODE specified on command line' unless $cli{MODE};
+	@mode = split( /,/, $cli{mode} );
+	$cli{mode} = \@mode;
+	die 'No mode specified on command line' unless $cli{mode};
 	
 	pod2usage( -verbose => 1 ) if $cli{help};
 	pod2usage( -verbose => 2 ) if $cli{man};
 	
 	#if not -q or --quit print all this (else be quiet)
-	if ($cli{QUIET} == 0) {
+	if ($cli{quiet} == 0) {
 		print STDERR 'My @ARGV: {', join( "} {", @arg_copy ), '}', "\n";
 		#no warnings 'uninitialized';
 		print STDERR 'Extra options from config: {', join( "} {", %opts), '}', "\n";
@@ -187,7 +187,7 @@ sub get_parameters_from_cmd {
 		}
 	}
 	else {
-		$cli{VERBOSE} = -1;   #and logging is OFF
+		$cli{verbose} = -1;   #and logging is OFF
 	}
 	
 	#insert config values into cli options if cli is not present on command line
@@ -210,8 +210,8 @@ sub get_parameters_from_cmd {
 # Comments   : used to setup a logging framework
 # See Also   : Log::Log4perl at https://metacpan.org/pod/Log::Log4perl
 sub init_logging {
-    croak 'init_logging() needs VERBOSE parameter' unless @_ == 1;
-    my ($VERBOSE) = @_;
+    croak 'init_logging() needs verbose parameter' unless @_ == 1;
+    my ($verbose) = @_;
 
     #create log file in same dir where script is running
 	#removes perl script and takes absolute path from rest of path
@@ -234,12 +234,12 @@ sub init_logging {
         Win32::Console::ANSI->import();
     }
 
-    #enable different levels based on VERBOSE flag
+    #enable different levels based on verbose flag
     my $log_level;
-    if    ($VERBOSE == 0)  { $log_level = 'INFO';  }
-    elsif ($VERBOSE == 1)  { $log_level = 'DEBUG'; }
-    elsif ($VERBOSE == 2)  { $log_level = 'TRACE'; }
-    elsif ($VERBOSE == -1) { $log_level = 'OFF';   }
+    if    ($verbose == 0)  { $log_level = 'INFO';  }
+    elsif ($verbose == 1)  { $log_level = 'DEBUG'; }
+    elsif ($verbose == 2)  { $log_level = 'TRACE'; }
+    elsif ($verbose == -1) { $log_level = 'OFF';   }
 	else                   { $log_level = 'INFO';  }
 
     #levels:
@@ -274,85 +274,6 @@ sub init_logging {
 }
 
 
-sub init_logging2 {
-    croak 'init_logging() needs VERBOSE parameter' unless @_ == 1;
-    my ($VERBOSE) = @_;
-
-    #create log file in same dir where script is running
-	#removes perl script and takes absolute path from rest of path
-	my ($volume,$dir_out,$perl_script) = splitpath( $0 );
-	#say '$dir_out:', $dir_out;
-	$dir_out = rel2abs($dir_out);
-	#say '$dir_out:', $dir_out;
-
-    my ($app_name) = $perl_script =~ m{\A(.+)\.(?:.+)\z};   #takes name of the script and removes .pl or .pm or .t
-    #say '$app_name:', $app_name;
-    my $logfile = catfile( $volume, $dir_out, $app_name . '.log' );    #combines all of above with .log
-	#say '$logfile:', $logfile;
-	$logfile = canonpath($logfile);
-	#say '$logfile:', $logfile;
-
-    #colored output on windows
-    my $osname = $^O;
-    if ( $osname eq 'MSWin32' ) {
-        require Win32::Console::ANSI;                                 #require needs import
-        Win32::Console::ANSI->import();
-    }
-
-    #enable different levels based on VERBOSE flag
-    my $log_level;
-    if    ($VERBOSE == 0)  { $log_level = 'INFO';  }
-    elsif ($VERBOSE == 1)  { $log_level = 'DEBUG'; }
-    elsif ($VERBOSE == 2)  { $log_level = 'TRACE'; }
-    elsif ($VERBOSE == -1) { $log_level = 'OFF';   }
-	else                   { $log_level = 'INFO';  }
-
-    #levels:
-    #ALL, TRACE, DEBUG, INFO, WARN, ERROR, FATAL, OFF
-    ###############################################################################
-    #                              Log::Log4perl Conf                             #
-    ###############################################################################
-    # Configuration is dynamic
-	# Define a category logger
-	my $log = Log::Log4perl->get_logger("main");
- 
-    # Define a layout
-	my $layout = Log::Log4perl::Layout::PatternLayout->new("[%d{yyyy/MM/dd HH:mm:ss,SSS}]%m%n");
- 
-   # Define a file appender
-	my $file_appender = Log::Log4perl::Appender->new(
-                        "Log::Log4perl::Appender::File",
-                        name      => "Logfile",
-                        filename  => "$logfile",
-						autoflush => 1,
-						umask => 022,
-						header_text => "INVOCATION:$0 @ARGV", 
-						#Threshold => "TRACE",
-					);
- 
-   # Define a stderr appender
-	my $stderr_appender =  Log::Log4perl::Appender->new(
-                        "Log::Log4perl::Appender::ScreenColoredLevels",
-                        name      => "Screen",
-                        stderr    => 1,
-					);
- 
-   # Have both appenders use the same layout (could be different)
-	$stderr_appender->layout($layout);
-	$file_appender->layout($layout);
-
- 
-	$log->add_appender($stderr_appender);
-	$log->add_appender($file_appender);
-	$log->level($log_level);
-	$file_appender->threshold( "TRACE" );
-	#Log::Log4perl->appender_thresholds_adjust(-1, ['Logfile']);
-	#print Dumper( Log::Log4perl->appenders() );
-
-
-    return;
-}
-
 ### INTERNAL UTILITY ###
 # Usage      : my ($stdout, $stderr, $exit) = capture_output( $cmd, $param_href );
 # Purpose    : accepts command, executes it, captures output and returns it in vars
@@ -366,14 +287,14 @@ sub capture_output {
     $log->logdie( 'capture_output() needs a $cmd' ) unless (@_ ==  2 or 1);
     my ($cmd, $param_href) = @_;
 
-    my $VERBOSE = defined $param_href->{VERBOSE}  ? $param_href->{VERBOSE}  : undef;   #default is silent
+    my $verbose = defined $param_href->{verbose}  ? $param_href->{verbose}  : undef;   #default is silent
     $log->info(qq|Report: COMMAND is: $cmd|);
 
     my ( $stdout, $stderr, $exit ) = capture {
         system($cmd );
     };
 
-    if ($VERBOSE == 2) {
+    if ($verbose == 2) {
         $log->trace( 'STDOUT is: ', "$stdout", "\n", 'STDERR  is: ', "$stderr", "\n", 'EXIT   is: ', "$exit" );
     }
 
@@ -398,11 +319,11 @@ sub install_perl {
     my $cmd_perl_version = 'perl -v';
     my ($stdout, $stderr, $exit) = capture_output( $cmd_perl_version, $param_href );
     if ($exit == 0) {
-        $log->info( 'Checking Perl version with perl -v' );
+        $log->debug( 'Checking Perl version with perl -v' );
         if ( $stdout =~ m{v(\d+\.(\d+)\.\d+)}g ) {
             my $perl_ver = $1;
             my $ver_num = $2;
-            $log->warn( "We have Perl $perl_ver and we need to update" );
+            $log->debug( "We have Perl $perl_ver" );
 
             #start perlenv install
             $log->info( 'Checking if we can install plenv' );
@@ -419,11 +340,24 @@ sub install_perl {
                     if ($exit_git == 0 ) {
                         $log->trace( 'git successfully installed' );
                     }
+					else {
+                        $log->trace( 'git installation failed' );
+					}
+
+					#if git is missing other tools are missing too
                     my $cmd_tools = q{sudo yum -y groupinstall "Development tools"};
+					my ($stdout_tools, $stderr_tools, $exit_tools) = capture_output( $cmd_tools, $param_href );
+                    if ($exit_tools == 0 ) {
+                        $log->trace( 'Development tools successfully installed' );
+                    }
+					else {
+                        $log->trace( 'Development tools installation failed' );
+					}
+
                     system $cmd_tools;
                 }
                 elsif ( $plenv_exist ) {
-                    $log->trace( "plenv already installed: $stderr_env" );
+                    $log->warn( "plenv already installed: $stderr_env" );
                 }
             }
             else {
@@ -444,61 +378,70 @@ sub install_perl {
                 if ($exit_bp == 0) {
                     $log->trace( 'Installed Perl-Build plugin for plenv from github' );
                 }
+				else {
+                    $log->trace( 'Perl-Build installation failed' );
+				}
+			}
 
-                #list all perls available
-                my $cmd_list_perls = q{plenv install --list};
-                my ($stdout_list, $stderr_list, $exit_list) = capture_output( $cmd_list_perls, $param_href );
-                my @perls = split("\n", $stdout_list);
-                #say @perls;
-                
-                #ask to choose which Perl to install
-                my $perl_to_install
-                  = prompt 'Choose which Perl version you want to install',
-                  -number,
-                  -menu => [ @perls ],
-                  '>';
-                my @thread_options = qw/usethreads nothreads/;
-                my $thread_option
-                  = prompt 'Do you want to install Perl with or without threads?',
-                  -menu => [ @thread_options ],
-                  '>';
-                $log->trace( "Will install $perl_to_install with $thread_option" );
+            #list all perls available
+            my $cmd_list_perls = q{plenv install --list};
+            my ($stdout_list, $stderr_list, $exit_list) = capture_output( $cmd_list_perls, $param_href );
+            my @perls = split("\n", $stdout_list);
+            #say @perls;
+            
+            #ask to choose which Perl to install
+            my $perl_to_install
+              = prompt 'Choose which Perl version you want to install',
+              -number,
+              -menu => [ @perls ],
+              '>';
+            my @thread_options = qw/usethreads nothreads/;
+            my $thread_option
+              = prompt 'Do you want to install Perl with or without threads?',
+              -menu => [ @thread_options ],
+              '>';
+            $log->trace( "Will install $perl_to_install with $thread_option" );
 
-                #install Perl
-                my $cmd_install;
-                if ($thread_option eq 'nothreads') {
-                    $cmd_install = qq{plenv install -j 8 -Dcc=gcc $perl_to_install};
-                }
-                else {
-                    $cmd_install = qq{plenv install -j 8 -Dcc=gcc -D usethreads $perl_to_install};
-                }
-                my ($stdout_ins, $stderr_ins, $exit_ins) = capture_output( $cmd_install, $param_href );
-                if ($exit_ins == 0) {
-                    $log->trace( "Perl $perl_to_install installed successfully!" );
-                }
+            #install Perl
+            my $cmd_install;
+            if ($thread_option eq 'nothreads') {
+                $cmd_install = qq{plenv install -j 8 -Dcc=gcc $perl_to_install};
+            }
+            else {
+                $cmd_install = qq{plenv install -j 8 -Dcc=gcc -D usethreads $perl_to_install};
+            }
+            my ($stdout_ins, $stderr_ins, $exit_ins) = capture_output( $cmd_install, $param_href );
+            if ($exit_ins == 0) {
+                $log->trace( "Perl $perl_to_install installed successfully!" );
+            }
+			else {
+                $log->trace( "Perl $perl_to_install failed" );
+			}
 
-                #finish installation, set perl as global
-                my $cmd_rehash = q{plenv rehash};
-                my $cmd_global = qq{plenv global $perl_to_install};
-                my $cmd_cpanm = q{plenv install-cpanm};
-                #my $cmd_lib   = q{sudo cpanm --local-lib=~/perl5 local::lib && eval $(perl -I ~/perl5/lib/perl5/ -Mlocal::lib)};
-                system ($cmd_rehash);
-                system ($cmd_global);
-                my ($stdout_cp, $stderr_cp, $exit_cp) = capture_output( $cmd_cpanm, $param_href );
-                if ($exit_cp == 0) {
-                    $log->trace( "Perl $perl_to_install is now global and cpanm installed" );
-                }
+            #finish installation, set perl as global
+            my $cmd_rehash = q{plenv rehash};
+            my $cmd_global = qq{plenv global $perl_to_install};
+            my $cmd_cpanm = q{plenv install-cpanm};
+            #my $cmd_lib   = q{sudo cpanm --local-lib=~/perl5 local::lib && eval $(perl -I ~/perl5/lib/perl5/ -Mlocal::lib)};
+            system ($cmd_rehash);
+            system ($cmd_global);
+            my ($stdout_cp, $stderr_cp, $exit_cp) = capture_output( $cmd_cpanm, $param_href );
+            if ($exit_cp == 0) {
+                $log->trace( "Perl $perl_to_install is now global and cpanm installed" );
+            }
+			else {
+                $log->trace( 'cpanm installation failed' );
+			}
 
-                #check if right Perl installed
-                my ($stdout_ver, $stderr_ver, $exit_ver) = capture_output( $cmd_perl_version, $param_href );
-                if ($exit_ver == 0) {
-                    $log->info( 'Checking Perl version with perl -v' );
-                    if ( $stdout_ver =~ m{v(\d+\.(\d+)\.\d+)}g ) {
-                        my $perl_ver2 = $1;
-                        $log->warn( "We have Perl $perl_ver2 " );
-                    }
+            #check if right Perl installed
+            my ($stdout_ver, $stderr_ver, $exit_ver) = capture_output( $cmd_perl_version, $param_href );
+            if ($exit_ver == 0) {
+                $log->debug( 'Checking Perl version after install' );
+                if ( $stdout_ver =~ m{v(\d+\.(\d+)\.\d+)}g ) {
+                    my $perl_ver2 = $1;
+                    $log->info( "We have Perl $perl_ver2 " );
                 }
-                }
+            }
         }
     }
     else {
