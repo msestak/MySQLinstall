@@ -12,8 +12,8 @@ use Capture::Tiny qw/capture/;
 use Data::Dumper;
 #use Regexp::Debugger;
 use Log::Log4perl;
+use IO::Prompt::Tiny qw/prompt/;
 use File::Find::Rule;
-use IO::Prompter;
 use Config::Std { def_sep => '=' };   #MySQL uses =
 
 our $VERSION = "0.01";
@@ -387,20 +387,13 @@ sub install_perl {
             my $cmd_list_perls = q{plenv install --list};
             my ($stdout_list, $stderr_list, $exit_list) = capture_output( $cmd_list_perls, $param_href );
             my @perls = split("\n", $stdout_list);
-            #say @perls;
+            say $stdout_list;
             
             #ask to choose which Perl to install
-            my $perl_to_install
-              = prompt 'Choose which Perl version you want to install',
-              -number,
-              -menu => [ @perls ],
-              '>';
+            my $perl_to_install = prompt ('Choose which Perl version you want to install (default 5.22.0) >', '5.22.0');
             my @thread_options = qw/usethreads nothreads/;
-            my $thread_option
-              = prompt 'Do you want to install Perl with or without threads?',
-              -menu => [ @thread_options ],
-              '>';
-            $log->trace( "Will install $perl_to_install with $thread_option" );
+            my $thread_option = prompt ('Do you want to install Perl with or without threads? (default nothreads) >', 'nothreads');
+            $log->info( "Installing $perl_to_install with $thread_option" );
 
             #install Perl
             my $cmd_install;
