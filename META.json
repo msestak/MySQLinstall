@@ -1,5 +1,5 @@
 {
-   "abstract" : "It's new $module",
+   "abstract" : "is installation script (modulino) that installs MySQL::Sandbox using cpanm, MySQL in a sandbox, additional engines like TokuDB and Deep and updates configuration. To install Perl use Perlinstall.pm.",
    "author" : [
       "tar.gz"
    ],
@@ -68,6 +68,11 @@
       }
    },
    "release_status" : "unstable",
+   "resources" : {
+      "repository" : {
+         "url" : "https://mocnii@bitbucket.org/mocnii/mysqlinstall.git"
+      }
+   },
    "version" : "0.01",
    "x_contributors" : [
       "mocnii <msestak@irb.hr>"

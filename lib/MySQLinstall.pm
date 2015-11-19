@@ -5,6 +5,7 @@ use 5.010001;
 use strict;
 use warnings;
 use File::Spec::Functions qw(:ALL);
+use Path::Tiny;
 use Carp;
 use Getopt::Long;
 use Pod::Usage;
@@ -22,6 +23,8 @@ our @EXPORT_OK = qw{
   run
   init_logging
   get_parameters_from_cmd
+  _capture_output
+  _exec_cmd
 
 };
 
@@ -43,16 +46,16 @@ sub run {
     my ($param_href) = get_parameters_from_cmd();
 
     #preparation of parameters
-    my $verbose    = $param_href->{verbose};
-    my $quiet      = $param_href->{quiet};
+    my $verbose  = $param_href->{verbose};
+    my $quiet    = $param_href->{quiet};
     my @mode     = @{ $param_href->{mode} };
-	my $URL      = $param_href->{url};
-	my $OPT      = $param_href->{opt};
-    my $SANDBOX = $param_href->{sandbox};
+    my $URL      = $param_href->{url};
+    my $OPT      = $param_href->{opt};
+    my $SANDBOX  = $param_href->{sandbox};
     my $INFILE   = $param_href->{infile};
-    my $OUT      = $param_href->{out};   #not used
+    my $OUT      = $param_href->{out};         #not used
     my $HOST     = $param_href->{host};
-    my $DATABASE = $param_href->{database};   #not used
+    my $DATABASE = $param_href->{database};    #not used
     my $USER     = $param_href->{user};
     my $PASSWORD = $param_href->{password};
     my $PORT     = $param_href->{port};
@@ -75,7 +78,6 @@ sub run {
 
     #call write modes (different subs that print different jobs)
 	my %dispatch = (
-        install_perl             => \&install_perl,                  #using perlenv
         install_sandbox          => \&install_sandbox,               #and create dirs
         wget_mysql               => \&wget_mysql,                    #from mysql
         wget_percona             => \&wget_percona_with_tokudb,      #from percona
@@ -190,7 +192,7 @@ sub get_parameters_from_cmd {
 		$cli{verbose} = -1;   #and logging is OFF
 	}
 	
-	#insert config values into cli options if cli is not present on command line
+	#insert config values into cli options if cli option is not present on command line
 	foreach my $key (keys %cli) {
 		if ( ! defined $cli{$key} ) {
 			$cli{$key} = $opts{$key};
@@ -275,16 +277,16 @@ sub init_logging {
 
 
 ### INTERNAL UTILITY ###
-# Usage      : my ($stdout, $stderr, $exit) = capture_output( $cmd, $param_href );
+# Usage      : my ($stdout, $stderr, $exit) = _capture_output( $cmd, $param_href );
 # Purpose    : accepts command, executes it, captures output and returns it in vars
 # Returns    : STDOUT, STDERR and EXIT as vars
 # Parameters : ($cmd_to_execute)
 # Throws     : 
 # Comments   : second param is verbose flag (default off)
 # See Also   :
-sub capture_output {
+sub _capture_output {
     my $log = Log::Log4perl::get_logger("main");
-    $log->logdie( 'capture_output() needs a $cmd' ) unless (@_ ==  2 or 1);
+    $log->logdie( '_capture_output() needs a $cmd' ) unless (@_ ==  2 or 1);
     my ($cmd, $param_href) = @_;
 
     my $verbose = defined $param_href->{verbose}  ? $param_href->{verbose}  : undef;   #default is silent
@@ -301,148 +303,31 @@ sub capture_output {
     return  $stdout, $stderr, $exit;
 }
 
-
-### INTERFACE SUB ###
-# Usage      : install_perl( $param_href );
-# Purpose    : install latest perl if not installed
-# Returns    : nothing
-# Parameters : ( $param_href ) params from command line
-# Throws     : croaks if wrong number of parameters
-# Comments   : first sub in chain, run only once at start
+### INTERNAL UTILITY ###
+# Usage      : _exec_cmd($cmd_git, $param_href);
+# Purpose    : accepts command, executes it and checks for success
+# Returns    : prints info
+# Parameters : ($cmd_to_execute, $param_href)
+# Throws     : 
+# Comments   : second param is verbose flag (default off)
 # See Also   :
-sub install_perl {
-    my $log = Log::Log4perl::get_logger("main");
-    $log->logcroak ('install_perl() needs a $param_href' ) unless @_ == 1;
-    my ( $param_href ) = @_;
+sub _exec_cmd {
+	croak( '_exec_cmd() needs a $cmd' ) unless (@_ == 2 or 3);
+    my ($cmd, $param_href, $cmd_info) = @_;
+	if (!defined $cmd_info) {
+		($cmd_info)  = $cmd =~ m/\A(\w+)/;
+	}
 
-    #check perl version
-    my $cmd_perl_version = 'perl -v';
-    my ($stdout, $stderr, $exit) = capture_output( $cmd_perl_version, $param_href );
-    if ($exit == 0) {
-        $log->debug( 'Checking Perl version with perl -v' );
-        if ( $stdout =~ m{v(\d+\.(\d+)\.\d+)}g ) {
-            my $perl_ver = $1;
-            my $ver_num = $2;
-            $log->debug( "We have Perl $perl_ver" );
-
-            #start perlenv install
-            $log->info( 'Checking if we can install plenv' );
-            my $cmd_plenv = 'git clone git://github.com/tokuhirom/plenv.git ~/.plenv';
-            my ($stdout_env, $stderr_env, $exit_env) = capture_output( $cmd_plenv, $param_href );
-            my ($git_missing) = $stderr_env =~ m{(git)};
-            my ($plenv_exist) = $stderr_env =~ m{(plenv)};
-
-            if ($exit_env != 0 ) {
-                if ( $git_missing ) {
-                    $log->warn( 'Need to install git' );
-                    my $cmd_git = 'sudo yum -y install git';
-                    my ($stdout_git, $stderr_git, $exit_git) = capture_output( $cmd_git, $param_href );
-                    if ($exit_git == 0 ) {
-                        $log->trace( 'git successfully installed' );
-                    }
-					else {
-                        $log->trace( 'git installation failed' );
-					}
-
-					#if git is missing other tools are missing too
-                    my $cmd_tools = q{sudo yum -y groupinstall "Development tools"};
-					my ($stdout_tools, $stderr_tools, $exit_tools) = capture_output( $cmd_tools, $param_href );
-                    if ($exit_tools == 0 ) {
-                        $log->trace( 'Development tools successfully installed' );
-                    }
-					else {
-                        $log->trace( 'Development tools installation failed' );
-					}
-
-                    system $cmd_tools;
-                }
-                elsif ( $plenv_exist ) {
-                    $log->warn( "plenv already installed: $stderr_env" );
-                }
-            }
-            else {
-                $log->trace( 'Installed plenv' );
-                
-                #updating .bash_profile for plenv to work
-                my $cmd_path = q{echo 'export PATH="$HOME/.plenv/bin:$PATH"' >> ~/.bash_profile};
-                my $cmd_eval = q{echo 'eval "$(plenv init -)"' >> ~/.bash_profile};
-                my $cmd_exec = q{source $HOME/.bash_profile};
-                system ($cmd_path);
-                system ($cmd_eval);
-                system ($cmd_exec);
-                $log->trace( 'Updated $PATH variable and initiliazed plenv' );
-                
-                #installing Perl-Build plugin for install function in plenv
-                my $cmd_perl_build = q{git clone git://github.com/tokuhirom/Perl-Build.git ~/.plenv/plugins/perl-build/};
-                my ($stdout_bp, $stderr_bp, $exit_bp) = capture_output( $cmd_perl_build, $param_href );
-                if ($exit_bp == 0) {
-                    $log->trace( 'Installed Perl-Build plugin for plenv from github' );
-                }
-				else {
-                    $log->trace( 'Perl-Build installation failed' );
-				}
-			}
-
-            #list all perls available
-            my $cmd_list_perls = q{plenv install --list};
-            my ($stdout_list, $stderr_list, $exit_list) = capture_output( $cmd_list_perls, $param_href );
-            my @perls = split("\n", $stdout_list);
-            say $stdout_list;
-            
-            #ask to choose which Perl to install
-            my $perl_to_install = prompt ('Choose which Perl version you want to install (default 5.22.0) >', '5.22.0');
-            my @thread_options = qw/usethreads nothreads/;
-            my $thread_option = prompt ('Do you want to install Perl with or without threads? (default nothreads) >', 'nothreads');
-            $log->info( "Installing $perl_to_install with $thread_option" );
-
-            #install Perl
-            my $cmd_install;
-            if ($thread_option eq 'nothreads') {
-                $cmd_install = qq{plenv install -j 8 -Dcc=gcc $perl_to_install};
-            }
-            else {
-                $cmd_install = qq{plenv install -j 8 -Dcc=gcc -D usethreads $perl_to_install};
-            }
-            my ($stdout_ins, $stderr_ins, $exit_ins) = capture_output( $cmd_install, $param_href );
-            if ($exit_ins == 0) {
-                $log->trace( "Perl $perl_to_install installed successfully!" );
-            }
-			else {
-                $log->trace( "Perl $perl_to_install failed" );
-			}
-
-            #finish installation, set perl as global
-            my $cmd_rehash = q{plenv rehash};
-            my $cmd_global = qq{plenv global $perl_to_install};
-            my $cmd_cpanm = q{plenv install-cpanm};
-            #my $cmd_lib   = q{sudo cpanm --local-lib=~/perl5 local::lib && eval $(perl -I ~/perl5/lib/perl5/ -Mlocal::lib)};
-            system ($cmd_rehash);
-            system ($cmd_global);
-            my ($stdout_cp, $stderr_cp, $exit_cp) = capture_output( $cmd_cpanm, $param_href );
-            if ($exit_cp == 0) {
-                $log->trace( "Perl $perl_to_install is now global and cpanm installed" );
-            }
-			else {
-                $log->trace( 'cpanm installation failed' );
-			}
-
-            #check if right Perl installed
-            my ($stdout_ver, $stderr_ver, $exit_ver) = capture_output( $cmd_perl_version, $param_href );
-            if ($exit_ver == 0) {
-                $log->debug( 'Checking Perl version after install' );
-                if ( $stdout_ver =~ m{v(\d+\.(\d+)\.\d+)}g ) {
-                    my $perl_ver2 = $1;
-                    $log->info( "We have Perl $perl_ver2 " );
-                }
-            }
-        }
+    my ($stdout, $stderr, $exit) = _capture_output( $cmd, $param_href );
+    if ($exit == 0 ) {
+        print "$cmd_info success!\n";
     }
-    else {
-        $log->logcarp( 'Got lost checking Perl version' );
-    }
-
-    return;
+	else {
+        print "$cmd_info failed!\n";
+	}
+	return $exit;
 }
+
 
 
 1;
@@ -452,11 +337,9 @@ __END__
 
 =head1 NAME
 
-MySQLinstall - is installation script that installs Perl using plenv, MySQL::Sandbox using cpanm, MySQL in a sandbox, additional engines like TokuDB and Deep and updates configuration.
+MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox using cpanm, MySQL in a sandbox, additional engines like TokuDB and Deep and updates configuration. To install Perl use Perlinstall.pm.
 
 =head1 SYNOPSIS
-
- MySQLinstall --mode=install_perl
 
  MySQLinstall --mode=install_sandbox --sandbox=/msestak/sandboxes/ --opt=/msestak/opt/mysql/
 
@@ -480,7 +363,6 @@ MySQLinstall - is installation script that installs Perl using plenv, MySQL::San
  MySQLinstall is installation script that installs Perl using plenv, MySQL::Sandbox using cpanm, MySQL in a sandbox, additional engines like TokuDB and Deep and updates configuration. 
 
  --mode=mode				Description
- --mode=install_perl		installs latest Perl with perlenv and cpanm
  --mode=install_sandbox		installs MySQL::Sandbox and prompts for modification of .bashrc
  --mode=wget_mysql			downloads MySQL from Oracle
  --mode=wget_percona		downloads Percona Server with TokuDB
