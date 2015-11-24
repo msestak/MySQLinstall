@@ -12,6 +12,7 @@ my @subs = qw(
   _capture_output
   _exec_cmd
   install_sandbox
+  wget_mysql
 
 );
 

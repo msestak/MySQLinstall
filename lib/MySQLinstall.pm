@@ -24,6 +24,7 @@ our @EXPORT_OK = qw{
   get_parameters_from_cmd
   _capture_output
   _exec_cmd
+  wget_mysql
 
 };
 
@@ -79,7 +80,6 @@ sub run {
 	my %dispatch = (
         install_sandbox          => \&install_sandbox,               #and create dirs
         wget_mysql               => \&wget_mysql,                    #from mysql
-        wget_percona             => \&wget_percona_with_tokudb,      #from percona
         install_mysql            => \&install_mysql,                 #edit also general options in my.cnf for InnoDB
         edit_tokudb              => \&edit_tokudb,                   #not implemented
         edit_deep                => \&edit_deep,                     #edit my.cnf for Deep engine and install it
@@ -453,6 +453,40 @@ sub _install_sandbox_env_setup {
 	}
 
 	return;
+}
+
+
+### INTERFACE SUB ###
+# Usage      : wget_mysql( $param_href );
+# Purpose    : dowloads MySQL binary from specified url
+# Returns    : nothing
+# Parameters : ( $param_href ) -i from command line
+# Throws     : croaks if wrong number of parameters
+# Comments   :
+# See Also   :
+sub wget_mysql {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak ('wget_mysql() needs a $param_href' ) unless @_ == 1;
+    my ( $param_href ) = @_;
+
+    my $url = $param_href->{url} or $log->logcroak( 'no $url specified on command line!' );
+
+    my $cmd_wget = qq{wget -c $url};
+	my $num_tries = 0;
+	TRY_AGAIN: {
+	    my ($stdout, $stderr, $exit) = _capture_output( $cmd_wget, $param_href );
+	    if ($exit == 0) {
+	        $log->info( "$url downloaded!" );
+	    }
+		else {
+			$num_tries++;
+			if ($num_tries < 10) {
+				goto TRY_AGAIN;
+			}
+		}
+	}
+
+    return;
 }
 
 
