@@ -11,6 +11,7 @@ my @subs = qw(
   get_parameters_from_cmd
   _capture_output
   _exec_cmd
+  install_sandbox
 
 );
 

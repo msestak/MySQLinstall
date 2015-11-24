@@ -13,7 +13,6 @@ use Capture::Tiny qw/capture/;
 use Data::Dumper;
 #use Regexp::Debugger;
 use Log::Log4perl;
-use IO::Prompt::Tiny qw/prompt/;
 use File::Find::Rule;
 use Config::Std { def_sep => '=' };   #MySQL uses =
 
@@ -50,8 +49,8 @@ sub run {
     my $quiet    = $param_href->{quiet};
     my @mode     = @{ $param_href->{mode} };
     my $URL      = $param_href->{url};
-    my $OPT      = $param_href->{opt};
-    my $SANDBOX  = $param_href->{sandbox};
+    my $opt      = $param_href->{opt};
+    my $sandbox  = $param_href->{sandbox};
     my $INFILE   = $param_href->{infile};
     my $OUT      = $param_href->{out};         #not used
     my $HOST     = $param_href->{host};
@@ -148,8 +147,10 @@ sub get_parameters_from_cmd {
         'sandbox|sand=s'=> \$cli{sandbox},
         'opt=s'         => \$cli{opt},
 
+        'in|i=s'        => \$cli{in},
         'infile|if=s'   => \$cli{infile},
         'out|o=s'       => \$cli{out},
+        'outfile|of=s'  => \$cli{outfile},
         'host|h=s'      => \$cli{host},
         'database|d=s'  => \$cli{database},
         'user|u=s'      => \$cli{user},
@@ -175,6 +176,12 @@ sub get_parameters_from_cmd {
 		#no warnings 'uninitialized';
 		print STDERR 'Extra options from config: {', join( "} {", %opts), '}', "\n";
 	
+		if ($cli{in}) {
+			say 'My input path: ', canonpath($cli{in});
+			$cli{in} = rel2abs($cli{in});
+			$cli{in} = canonpath($cli{in});
+			say "My absolute input path: $cli{in}";
+		}
 		if ($cli{infile}) {
 			say 'My input file: ', canonpath($cli{infile});
 			$cli{infile} = rel2abs($cli{infile});
@@ -187,19 +194,27 @@ sub get_parameters_from_cmd {
 			$cli{out} = canonpath($cli{out});
 			say "My absolute output path: $cli{out}";
 		}
+		if ($cli{outfile}) {
+			say 'My outfile: ', canonpath($cli{outfile});
+			$cli{outfile} = rel2abs($cli{outfile});
+			$cli{outfile} = canonpath($cli{outfile});
+			say "My absolute outfile: $cli{outfile}";
+		}
 	}
 	else {
 		$cli{verbose} = -1;   #and logging is OFF
 	}
-	
-	#insert config values into cli options if cli option is not present on command line
+
+    #copy all config opts
+	my %all_opts = %opts;
+	#update with cli options
 	foreach my $key (keys %cli) {
-		if ( ! defined $cli{$key} ) {
-			$cli{$key} = $opts{$key};
+		if ( defined $cli{$key} ) {
+			$all_opts{$key} = $cli{$key};
 		}
 	}
 
-    return ( \%cli );
+    return ( \%all_opts );
 }
 
 
@@ -290,7 +305,7 @@ sub _capture_output {
     my ($cmd, $param_href) = @_;
 
     my $verbose = defined $param_href->{verbose}  ? $param_href->{verbose}  : undef;   #default is silent
-    $log->info(qq|Report: COMMAND is: $cmd|);
+    $log->debug(qq|Report: COMMAND is: $cmd|);
 
     my ( $stdout, $stderr, $exit ) = capture {
         system($cmd );
@@ -312,20 +327,132 @@ sub _capture_output {
 # Comments   : second param is verbose flag (default off)
 # See Also   :
 sub _exec_cmd {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logdie( '_exec_cmd() needs a $cmd, $param_href and info' ) unless (@_ ==  2 or 1);
 	croak( '_exec_cmd() needs a $cmd' ) unless (@_ == 2 or 3);
     my ($cmd, $param_href, $cmd_info) = @_;
 	if (!defined $cmd_info) {
 		($cmd_info)  = $cmd =~ m/\A(\w+)/;
 	}
+    my $verbose = $param_href->{verbose};
 
     my ($stdout, $stderr, $exit) = _capture_output( $cmd, $param_href );
-    if ($exit == 0 ) {
-        print "$cmd_info success!\n";
+    if ($exit == 0 and $verbose > 1) {
+        $log->trace( "$cmd_info success!" );
     }
 	else {
-        print "$cmd_info failed!\n";
+        $log->trace( "$cmd_info failed!" );
 	}
 	return $exit;
+}
+
+
+### INTERFACE SUB ###
+# Usage      : install_sandbox( $param_href );
+# Purpose    : install MySQL::Sandbox module and create dir for MySQL binaries 
+# Returns    : nothing
+# Parameters : no params
+# Throws     : croaks if wrong number of parameters
+# Comments   : updates .bashrc with sandbox environmental variables
+# See Also   :
+sub install_sandbox {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak ('install_sandbox() needs a $param_href' ) unless @_ == 1;
+    my ( $param_href ) = @_;
+
+    my $sandbox = $param_href->{sandbox} or $log->logcroak( 'no $sandbox specified on command line!' );
+    my $opt     = $param_href->{opt}     or $log->logcroak( 'no $opt specified on command line!' );
+
+	#create $opt dir (not automatically created)
+	my @dirs = path($opt)->mkpath({ chmod => 0766 });
+	if (@dirs == 0) {
+		 $log->trace( "SANDBOX_BINARY $opt already exists!" );
+	}
+	elsif (@dirs > 0) {
+		 $log->trace( "SANDBOX_BINARY $opt created!" );
+	}
+	elsif (!@dirs) {
+		 $log->warn( "SANDBOX_BINARY $opt creation failed!" );
+	}
+
+	#create $sandbox dir
+	my @dirs2 = path($sandbox)->mkpath({ chmod => 0766 });
+	if (@dirs2 == 0) {
+		 $log->trace( "SANDBOX_HOME $sandbox already exists!" );
+	}
+	elsif (@dirs2 > 0) {
+		 $log->trace( "SANDBOX_HOME $sandbox created!" );
+	}
+	elsif (!@dirs2) {
+		 $log->warn( "SANDBOX_HOME $sandbox creation failed!" );
+	}
+
+	#check .bashrc for sandbox environmental variables and set them up
+	#possible only after you have created directories
+	_install_sandbox_env_setup($param_href);
+
+	#execute cpanm install or upgrade
+    my $cmd_cpanm = q{cpanm MySQL::Sandbox};
+    my ($stdout, $stderr, $exit) = _capture_output( $cmd_cpanm, $param_href );
+    if ($exit == 0) {
+        $log->info( 'MySQL::Sandbox installed!' );
+    }
+
+    return;
+}
+
+
+### INTERNAL UTILITY ###
+# Usage      : _install_sandbox_env_setup( $param_href );
+# Purpose    : it checks .bashrc for sandbox environmental variables and sets them up
+# Returns    : nothing
+# Parameters : $param_href
+# Throws     : 
+# Comments   : part of install_sandbox mode
+# See Also   : install_sandbox()
+sub _install_sandbox_env_setup {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak('_install_sandbox_env_setup() needs a $param_href') unless @_ == 1;
+    my ($param_href) = @_;
+
+    my $sandbox = $param_href->{sandbox} or $log->logcroak( 'no $sandbox specified on command line!' );
+    my $opt     = $param_href->{opt}     or $log->logcroak( 'no $opt specified on command line!' );
+
+	#check .bashrc for SANDBOX_HOME and SANBOX_BINARY variables
+	my $bashrc_path = path($ENV{HOME}, '.bashrc');
+	open (my $bashrc_fh, "+<", $bashrc_path) or $log->logdie( "Can't open $bashrc_path:$!" );
+	
+	my $found_sandbox = 0;   #set flag for finding a variable SANDBOX_HOME
+	my $found_opt     = 0;   #set flag for finding a variable SANDBOX_BINARY
+	while (<$bashrc_fh>) {
+		chomp;
+		
+		if (/SANDBOX_HOME/) {
+			$log->trace( "sandbox_HOME variable set in $bashrc_path {$_}" );
+			$found_sandbox = 1;
+		}
+
+		if (/SANDBOX_BINARY/) {
+			$log->trace( "sandbox_BINARY variable set in $bashrc_path {$_}" );
+			$found_opt = 1;
+		}
+	}   #end while
+
+	#update env variables
+	if ($found_sandbox == 0) {
+		say {$bashrc_fh} "export SANDBOX_HOME=$sandbox";
+		#my $cmd_sand = qq{export "SANDBOX_HOME=$sandbox"};
+		#_exec_cmd($cmd_sand, $param_href);
+		$ENV{SANDBOX_HOME} = "$sandbox";
+	}
+	if ($found_opt == 0) {
+		say {$bashrc_fh} "export SANDBOX_BINARY=$opt";
+		#my $cmd_opt = qq{export "SANDBOX_BINARY=$opt"};
+		#_exec_cmd($cmd_opt, $param_href);
+		$ENV{SANDBOX_BINARY} = "$opt";
+	}
+
+	return;
 }
 
 
