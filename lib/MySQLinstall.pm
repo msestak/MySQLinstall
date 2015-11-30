@@ -131,6 +131,8 @@ sub get_parameters_from_cmd {
 	foreach my $key (keys %config) {
 		%opts = (%opts, %{ $config{$key} });
 	}
+	# put config location to %opts
+	$opts{config} = $config_file;
 	#say 'opts:', Dumper(\%opts);
 
 	#cli part
@@ -146,17 +148,19 @@ sub get_parameters_from_cmd {
         'url=s'         => \$cli{url},
         'sandbox|sand=s'=> \$cli{sandbox},
         'opt=s'         => \$cli{opt},
-
+		'config|cnf=s'  => \$cli{config},
         'in|i=s'        => \$cli{in},
         'infile|if=s'   => \$cli{infile},
         'out|o=s'       => \$cli{out},
         'outfile|of=s'  => \$cli{outfile},
+
         'host|h=s'      => \$cli{host},
         'database|d=s'  => \$cli{database},
         'user|u=s'      => \$cli{user},
         'password|p=s'  => \$cli{password},
         'port|po=i'     => \$cli{port},
         'socket|s=s'    => \$cli{socket},
+
         'mode|mo=s{1,}' => \$cli{mode},       #accepts 1 or more arguments
         'quiet|q'       => \$cli{quiet},      #flag
         'verbose+'      => \$cli{verbose},    #flag
@@ -174,7 +178,7 @@ sub get_parameters_from_cmd {
 	if ($cli{quiet} == 0) {
 		print STDERR 'My @ARGV: {', join( "} {", @arg_copy ), '}', "\n";
 		#no warnings 'uninitialized';
-		print STDERR 'Extra options from config: {', join( "} {", %opts), '}', "\n";
+		print STDERR "Extra options from config:", Dumper(\%opts);
 	
 		if ($cli{in}) {
 			say 'My input path: ', canonpath($cli{in});
@@ -784,6 +788,9 @@ it under the same terms as Perl itself.
 mocnii E<lt>msestak@irb.hrE<gt>
 
 =head1 EXAMPLE
+
+ #install all modules
+ cpanm -n Path::Tiny Capture::Tiny File::Find::Rule Log::Log4perl Config::Std
 
  MySQLinstall --mode=install_mysql --in=./download/Percona-Server-5.6.25-rel73.1-Linux.x86_64.ssl101.tar.gz
  MySQLinstall --mode=edit_tokudb --opt=/home/msestak/opt/mysql/5.6.25/ --sand=/home/msestak/sandboxes/msb_5_6_25/

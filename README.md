@@ -50,6 +50,11 @@ MySQLinstall is installation script that installs MySQL::Sandbox using cpanm, My
         #option from command line (can also come from config)
         MySQLinstall --mode=wget_mysql --url http://dev.mysql.com/get/Downloads/MySQL-5.6/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
 
+- install\_mysql
+
+        #option from command line (can also come from config)
+        MySQLinstall --mode=install_mysql --infile mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
+
 # CONFIGURATION
 
 All configuration in set in mysqlinstall.cnf that is found in ./lib directory. It follows [Config::Std](https://metacpan.org/pod/Config::Std) format and rules.
@@ -83,6 +88,9 @@ it under the same terms as Perl itself.
 mocnii <msestak@irb.hr>
 
 # EXAMPLE
+
+    #install all modules
+    cpanm -n Path::Tiny Capture::Tiny File::Find::Rule Log::Log4perl Config::Std
 
     MySQLinstall --mode=install_mysql --in=./download/Percona-Server-5.6.25-rel73.1-Linux.x86_64.ssl101.tar.gz
     MySQLinstall --mode=edit_tokudb --opt=/home/msestak/opt/mysql/5.6.25/ --sand=/home/msestak/sandboxes/msb_5_6_25/
