@@ -13,6 +13,7 @@ my @subs = qw(
   _exec_cmd
   install_sandbox
   wget_mysql
+  install_mysql
 
 );
 

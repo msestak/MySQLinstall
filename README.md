@@ -50,10 +50,14 @@ MySQLinstall is installation script that installs MySQL::Sandbox using cpanm, My
         #option from command line (can also come from config)
         MySQLinstall --mode=wget_mysql --url http://dev.mysql.com/get/Downloads/MySQL-5.6/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
 
+    Downloads MySQL binary from internet link. Resumes broken downloads.
+
 - install\_mysql
 
         #option from command line (can also come from config)
         MySQLinstall --mode=install_mysql --infile mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
+
+    Installs MySQL in sandbox named after MySQL version and puts binary into "opt/mysql" directory. It rewrites existing installation.
 
 # CONFIGURATION
 

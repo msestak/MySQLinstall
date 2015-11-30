@@ -13,3 +13,5 @@ user     = msandbox
 password = msandbox
 port     = 5625
 socket   = /tmp/mysql_sandbox5625.sock
+innodb   = 1G
+
