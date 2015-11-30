@@ -8,8 +8,6 @@ MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox us
 
     MySQLinstall --mode=wget_mysql -url http://dev.mysql.com/get/Downloads/MySQL-5.5/mysql-5.5.43-linux2.6-x86_64.tar.gz
 
-    MySQLinstall --mode=wget_percona -url https://www.percona.com/downloads/Percona-Server-5.6/Percona-Server-5.6.24-72.2/binary/tarball/Percona-Server-5.6.24-rel72.2-Linux.x86_64.ssl101.tar.gz -url_tokudb https://www.percona.com/downloads/Percona-Server-5.6/Percona-Server-5.6.24-72.2/binary/tarball/Percona-Server-5.6.24-rel72.2-TokuDB.Linux.x86_64.ssl101.tar.gz
-
     MySQLinstall --mode=install_mysql -i ./download/mysql-5.6.26-linux-glibc2.5-x86_64.tar.gz
     MySQLinstall --mode=install_mysql --in=./download/Percona-Server-5.6.25-rel73.1-Linux.x86_64.ssl101.tar.gz
 
@@ -21,7 +19,7 @@ MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox us
 
 # DESCRIPTION
 
-    MySQLinstall is installation script that installs Perl using plenv, MySQL::Sandbox using cpanm, MySQL in a sandbox, additional engines like TokuDB and Deep and updates configuration. 
+MySQLinstall is installation script that installs MySQL::Sandbox using cpanm, MySQL in a sandbox, additional engines like TokuDB and Deep and updates configuration for MySQL.
 
     --mode=mode                            Description
     --mode=install_sandbox         installs MySQL::Sandbox and prompts for modification of .bashrc
@@ -35,6 +33,44 @@ MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox us
     MySQLinstall -h
     MySQLinstall -m
 
+## MODES
+
+- install\_sandbox
+
+        # options from command line
+        MySQLinstall --mode=install_sandbox --sandbox=$HOME/sandboxes/ --opt=$HOME/opt/mysql/
+
+        # options from config
+        MySQLinstall --mode=install_sandbox
+
+    Install MySQL::Sandbox, set environment variables (SANDBOX\_HOME and SANBOX\_BINARY) and create these directories if needed.
+
+- wget\_mysql
+
+        #option from command line (can also come from config)
+        MySQLinstall --mode=wget_mysql --url http://dev.mysql.com/get/Downloads/MySQL-5.6/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
+
+# CONFIGURATION
+
+All configuration in set in mysqlinstall.cnf that is found in ./lib directory. It follows [Config::Std](https://metacpan.org/pod/Config::Std) format and rules.
+Example:
+
+    [General]
+    sandbox  = /home/msestak/sandboxes
+    opt      = /home/msestak/opt/mysql
+    #url      = http://dev.mysql.com/get/Downloads/MySQL-5.6/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
+    url      = https://www.percona.com/downloads/Percona-Server-5.6/Percona-Server-5.6.27-75.0/binary/tarball/Percona-Server-5.6.27-rel75.0-Linux.x86_64.ssl101.tar.gz
+    out      = /msestak/gitdir/MySQLinstall
+    infile   = /msestak/gitdir/MySQLinstall/lib/MySQLinstall.pm
+    
+    [Database]
+    host     = localhost
+    database = test
+    user     = msandbox
+    password = msandbox
+    port     = 5625
+    socket   = /tmp/mysql_sandbox5625.sock
+
 # LICENSE
 
 Copyright (C) Martin Sebastijan Šestak.
@@ -47,9 +83,10 @@ it under the same terms as Perl itself.
 mocnii <msestak@irb.hr>
 
 # EXAMPLE
- MySQLinstall --mode=install\_mysql --in=./download/Percona-Server-5.6.25-rel73.1-Linux.x86\_64.ssl101.tar.gz
- MySQLinstall --mode=edit\_tokudb --opt=/home/msestak/opt/mysql/5.6.25/ --sand=/home/msestak/sandboxes/msb\_5\_6\_25/
 
+    MySQLinstall --mode=install_mysql --in=./download/Percona-Server-5.6.25-rel73.1-Linux.x86_64.ssl101.tar.gz
+    MySQLinstall --mode=edit_tokudb --opt=/home/msestak/opt/mysql/5.6.25/ --sand=/home/msestak/sandboxes/msb_5_6_25/
+    
     MySQLinstall --mode=install_mysql -i mysql-5.6.24-linux-glibc2.5-x86_64.tar.gz
     MySQLinstall --mode=edit_deep -i deep-mysql-5.6.24-community-plugin-3.2.0.19297-1.el6.x86_64.rpm --sand=/msestak/sandboxes/msb_5_6_24/ --opt=/msestak/opt/mysql/5.6.24/
 
