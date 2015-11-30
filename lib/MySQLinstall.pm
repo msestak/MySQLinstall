@@ -26,6 +26,7 @@ our @EXPORT_OK = qw{
   _exec_cmd
   wget_mysql
   install_mysql
+  install_mysql_with_prefix
 
 };
 
@@ -82,6 +83,7 @@ sub run {
         install_sandbox          => \&install_sandbox,               #and create dirs
         wget_mysql               => \&wget_mysql,                    #from mysql internet site
         install_mysql            => \&install_mysql,                 #edit also general options in my.cnf for InnoDB
+        install_mysql_with_prefix => \&install_mysql_with_prefix,      # installs MySQL with different port if version port used
         edit_tokudb              => \&edit_tokudb,                   #not implemented
         edit_deep                => \&edit_deep,                     #edit my.cnf for Deep engine and install it
         edit_deep_report         => \&edit_deep_report,              #edit my.cnf for Deep engine and install it (with reporting to deep.is)
@@ -154,6 +156,7 @@ sub get_parameters_from_cmd {
         'infile|if=s'   => \$cli{infile},
         'out|o=s'       => \$cli{out},
         'outfile|of=s'  => \$cli{outfile},
+		'prefix=s'      => \$cli{prefix},
 
         'host|h=s'      => \$cli{host},
         'database|d=s'  => \$cli{database},
@@ -598,6 +601,8 @@ innodb-log-file-size           = 1G
 innodb-flush-log-at-trx-commit = 2
 innodb-file-per-table          = 1
 innodb-buffer-pool-size        = $innodb_buffer
+#default: innodb-buffer-pool-instances   = 8
+innodb-buffer-pool-instances   = 1
 innodb_doublewrite             = OFF
 
 # TIMEZONE #
@@ -662,8 +667,9 @@ SQL
 # See Also   : install_mysql()
 sub _get_sandbox_name_from {
     my $log = Log::Log4perl::get_logger("main");
-    $log->logcroak('_get_sandbox_name_from() needs a $infile') unless @_ == 1;
-    my ($infile) = @_;
+    $log->logcroak('_get_sandbox_name_from() needs a $infile') unless @_ == 1 or 2;
+    my $infile = shift;
+	my $prefix = shift // ''; 
 
     # get name of MySQL binary without location
     my $mysql_binary = path($infile)->basename;
@@ -671,6 +677,7 @@ sub _get_sandbox_name_from {
 
     # extract version and num from binary
     ( my $mysql_ver = $mysql_binary ) =~ s/\A.+?-(5\.\d+\.\d+)-.+?\z/$1/;
+	$mysql_ver = $prefix . $mysql_ver;
     $log->trace("MySQL version: $mysql_ver");
     (my $mysql_num = $mysql_ver) =~ s/\.//g;
     $log->trace( "MySQL num: $mysql_num" );
@@ -731,48 +738,67 @@ sub _check_my_cnf_for {
 
 
 ### INTERFACE SUB ###
-# Usage      : install_mysql_check_port( $param_href );
+# Usage      : install_mysql_with_prefix( $param_href );
 # Purpose    : installs MySQL binary using MySQL::Sandbox with check port enabled
 # Returns    : nothing
 # Parameters : ( $param_href ) --infile from command line
 # Throws     : croaks if wrong number of parameters
 # Comments   : it modifies my.cnf for high performance too
 # See Also   :
-sub install_mysql_check_port {
+sub install_mysql_with_prefix {
     my $log = Log::Log4perl::get_logger("main");
-    $log->logcroak ('install_mysql_check_port() needs a $param_href' ) unless @_ == 1;
+    $log->logcroak ('install_mysql_with_prefix() needs a $param_href' ) unless @_ == 1;
     my ( $param_href ) = @_;
     my $infile = $param_href->{infile} or $log->logcroak( 'no $infile specified on command line!' );
+    my $prefix = $param_href->{prefix} or $log->logcroak( 'no $prefix specified on command line!' );
+    my $opt = $param_href->{opt}       or $log->logcroak( 'no $opt specified on command line!' );
 
 	# setup of sandbox and opt names
-	my ( $mysql_ver, $mysql_num, $sandbox_path, $opt_path ) = _get_sandbox_name_from( $infile );
+	my ( $mysql_ver, $mysql_num, $sandbox_path, $opt_path ) = _get_sandbox_name_from( $infile, $prefix );
 
-    #install MySQL with default options
-	# delete sandbox if exists
+	# check for existence of sandbox dir
     if (-d $sandbox_path) {
-        $log->warn( "sandbox $sandbox_path already exists" );
+        $log->warn( "Report: sandbox $sandbox_path already exists" );
 	}
 
-	#delete binary directory if exists
+	# check for existence of opt/mysql dir
 	if (-d $opt_path) {
-		$log->info( "extracted $mysql_ver already exists in $opt_path" );
+		$log->warn( "Report: extracted $mysql_ver already exists in $opt_path" );
 	}
 
     #fresh install
-    $log->info( "Installing $mysql_ver to $sandbox_path and extracting MySQL binary to $opt_path" );
-    my $cmd_make = qq{make_sandbox --export_binaries $infile -- --check_port --no_confirm};   #infile needed for absolute path
+	#set variables for sandbox, opt, new port
+	my ($sandbox_port, $sandbox_dir, $opt_basedir);
+    $log->info( "Action: installing $mysql_ver with port checking and prefix={$prefix}" );
+    my $cmd_make = qq{make_sandbox --export_binaries $infile --add_prefix=$prefix -- --check_port --no_confirm};
     my ($stdout, $stderr, $exit) = _capture_output( $cmd_make, $param_href );
     if ($exit == 0) {
-            #install succeeded
-            $log->info( "Sandbox installed in $sandbox_path with MySQL in $opt_path" );
+        #install succeeded
+		open (my $stdout_fh, "<", \$stdout) or $log->logdie( "Error: can't open $stdout for reading:$!" );
+
+		while (<$stdout_fh>) {
+			chomp;
+			if (m{\Asandbox_port\s+=\s+(\d+)\z}) {
+				$sandbox_port = $1;
+			}
+			if (m{\Asandbox_directory\s+=\s+(.+)\z}) {
+				$sandbox_dir = $1;
+				$sandbox_dir = path($ENV{SANDBOX_HOME}, $sandbox_dir);
+			}
+			if (m{\Abasedir\s+=\s+(.+)\z}) {
+				$opt_basedir = $1;
+			}
+		}   # end while
+
+        $log->info( "Report: sandbox installed in $sandbox_dir with MySQL in $opt_basedir port:{$sandbox_port}" );
     }
 	else {
-		$log->error( "Action: MySQL failed to install to $sandbox_path with MySQL in $opt_path" );
-		$log->logexit( "Report: $stderr" );
+		$log->error( "Error: MySQL$mysql_ver failed to install" );
+		$log->logexit( "Error: $stderr" );
 	}
 
     #check my.cnf options
-	my ($mysql_cnf_path, $mysql_datadir) = _check_my_cnf_for( $sandbox_path, $opt_path );
+	my ($mysql_cnf_path, $mysql_datadir) = _check_my_cnf_for( $sandbox_dir, $opt_basedir );
 
     #change my.cnf options
     open my $sandbox_cnf_fh, ">>", $mysql_cnf_path or $log->logdie( "Can't find cnf: $!" );
@@ -799,7 +825,7 @@ innodb-strict-mode             = 1
 transaction-isolation          = READ-COMMITTED
 
 # BINARY LOGGING #
-#server-id                      = $mysql_num
+#server-id                      = $sandbox_port
 #log-bin                        = mysql-bin
 #expire-logs-days               = 14
 #sync-binlog                    = 1
@@ -823,6 +849,8 @@ innodb-log-file-size           = 1G
 innodb-flush-log-at-trx-commit = 2
 innodb-file-per-table          = 1
 innodb-buffer-pool-size        = $innodb_buffer
+#default: innodb-buffer-pool-instances   = 8
+innodb-buffer-pool-instances   = 1
 innodb_doublewrite             = OFF
 
 # TIMEZONE #
@@ -831,17 +859,17 @@ collation_server               = latin1_swedish_ci
 
 # LOGGING #
 slow-query-log                 = off
-#slow-query-log-file            = $sandbox_path/data/msandbox-slow.log
+#slow-query-log-file            = $sandbox_dir/data/msandbox-slow.log
 #log-queries-not-using-indexes  = 1
 #long_query_time                = 0
-#log-error                      = $sandbox_path/data/msandbox.err
+#log-error                      = $sandbox_dir/data/msandbox.err
 performance_schema             = off
 
 # TokuDB #
 #tokudb_cache_size              = 1G
-#tokudb_data_dir                = $sandbox_path/data
-#tokudb_log_dir                 = $sandbox_path/data
-#tokudb_tmp_dir                 = $sandbox_path/data
+#tokudb_data_dir                = $sandbox_dir/data
+#tokudb_log_dir                 = $sandbox_dir/data
+#tokudb_tmp_dir                 = $sandbox_dir/data
 #tokudb_commit_sync             = 1
 #tokudb_directio                = 0
 #tokudb_load_save_space         = 1
@@ -857,20 +885,20 @@ SQL
     #delete InnoDB logfiles (else it doesn't start)
     foreach my $i (0..1) {
         my $log_file = path($mysql_datadir, 'ib_logfile' . $i);
-        unlink $log_file and $log->trace( "InnoDB logfile $log_file deleted" ) 
-          or $log->logdie( "InnoDB file: $log_file not found: $!" );
+        unlink $log_file and $log->trace( "Action: InnoDB logfile $log_file deleted" ) 
+          or $log->logdie( "Error: InnoDB file: $log_file not found: $!" );
     }
 
     #restart MySQl to check if config ok
-    my $cmd_restart = path($sandbox_path, 'restart');
+    my $cmd_restart = path($sandbox_dir, 'restart');
     my ($stdout_res, $stderr_res, $exit_res) = _capture_output( $cmd_restart, $param_href );
         if ($exit_res == 0) {
                 #restart succeeded
-                $log->warn( "Sandbox $sandbox_path restarted with MySQL in $opt_path" );
+                $log->warn( "Action: sandbox $sandbox_dir restarted with MySQL in $opt_basedir port{$sandbox_port}" );
         }
 		else {
 			#restart failed
-			$log->logexit( "Sandbox $sandbox_path failed to restart AFTER updating InnoDB options" );
+			$log->logexit( "Error: sandbox $sandbox_dir failed to restart AFTER updating InnoDB options" );
 		}
 
     return;
@@ -948,6 +976,13 @@ Downloads MySQL binary from internet link. Resumes broken downloads.
  MySQLinstall --mode=install_mysql --infile mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
 
 Installs MySQL in sandbox named after MySQL version and puts binary into "opt/mysql" directory. It rewrites existing installation.
+
+=item install_mysql_with_prefix
+
+ MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_
+ MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=deep_
+
+Installs MySQL with port checking and prefix. It doesn't rewrite previous MySQL instance. Useful for installing multiple MySQL servers with same version but different storage engines.
 
 =back
 

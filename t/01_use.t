@@ -14,6 +14,7 @@ my @subs = qw(
   install_sandbox
   wget_mysql
   install_mysql
+  install_mysql_with_prefix
 
 );
 

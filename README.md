@@ -59,6 +59,13 @@ MySQLinstall is installation script that installs MySQL::Sandbox using cpanm, My
 
     Installs MySQL in sandbox named after MySQL version and puts binary into "opt/mysql" directory. It rewrites existing installation.
 
+- install\_mysql\_with\_prefix
+
+        MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_
+        MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=deep_
+
+    Installs MySQL with port checking and prefix. It doesn't rewrite previous MySQL instance. Useful for installing multiple MySQL servers with same version but different storage engines.
+
 # CONFIGURATION
 
 All configuration in set in mysqlinstall.cnf that is found in ./lib directory. It follows [Config::Std](https://metacpan.org/pod/Config::Std) format and rules.
