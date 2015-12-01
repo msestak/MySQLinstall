@@ -680,6 +680,7 @@ sub _get_sandbox_name_from {
 	$mysql_ver = $prefix . $mysql_ver;
     $log->trace("MySQL version: $mysql_ver");
     (my $mysql_num = $mysql_ver) =~ s/\.//g;
+	($mysql_num) = ($mysql_num =~ m/\A.+?(\d+)\z/);
     $log->trace( "MySQL num: $mysql_num" );
 
     # get opt path
@@ -923,8 +924,9 @@ MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox us
 
  MySQLinstall --mode=wget_mysql -url http://dev.mysql.com/get/Downloads/MySQL-5.5/mysql-5.5.43-linux2.6-x86_64.tar.gz
 
- MySQLinstall --mode=install_mysql -i ./download/mysql-5.6.26-linux-glibc2.5-x86_64.tar.gz
- MySQLinstall --mode=install_mysql --in=./download/Percona-Server-5.6.25-rel73.1-Linux.x86_64.ssl101.tar.gz
+ MySQLinstall --mode=install_mysql -if ./download/mysql-5.6.26-linux-glibc2.5-x86_64.tar.gz
+
+ MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_
 
  MySQLinstall --mode=edit_tokudb --opt=/home/msestak/opt/mysql/5.6.25/ --sand=/home/msestak/sandboxes/msb_5_6_25/
 
