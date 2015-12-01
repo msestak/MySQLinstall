@@ -27,6 +27,7 @@ our @EXPORT_OK = qw{
   wget_mysql
   install_mysql
   install_mysql_with_prefix
+  edit_tokudb
 
 };
 
@@ -79,14 +80,13 @@ sub run {
     $log->debug( '$param_href = ', "$dump_print" ) if $verbose;
 
     #call write modes (different subs that print different jobs)
-	my %dispatch = (
-        install_sandbox          => \&install_sandbox,               #and create dirs
-        wget_mysql               => \&wget_mysql,                    #from mysql internet site
-        install_mysql            => \&install_mysql,                 #edit also general options in my.cnf for InnoDB
-        install_mysql_with_prefix => \&install_mysql_with_prefix,      # installs MySQL with different port if version port used
-        edit_tokudb              => \&edit_tokudb,                   #not implemented
-        edit_deep                => \&edit_deep,                     #edit my.cnf for Deep engine and install it
-        edit_deep_report         => \&edit_deep_report,              #edit my.cnf for Deep engine and install it (with reporting to deep.is)
+    my %dispatch = (
+        install_sandbox           => \&install_sandbox,              # and create dirs
+        wget_mysql                => \&wget_mysql,                   # from mysql internet site
+        install_mysql             => \&install_mysql,                # and edit general options in my.sandbox.cnf for InnoDB
+        install_mysql_with_prefix => \&install_mysql_with_prefix,    # installs MySQL with different port and prefix
+        edit_tokudb               => \&edit_tokudb,                  # install TokuDB storage engine with Percona
+        edit_deep_report          => \&edit_deep_report,             # install Deep engine (with reporting to deep.is)
 
     );
 
@@ -151,6 +151,8 @@ sub get_parameters_from_cmd {
         'url=s'         => \$cli{url},
         'sandbox|sand=s'=> \$cli{sandbox},
         'opt=s'         => \$cli{opt},
+        'sandedit|se=s' => \$cli{sandedit},
+        'optedit=s'     => \$cli{optedit},
 		'config|cnf=s'  => \$cli{config},
         'in|i=s'        => \$cli{in},
         'infile|if=s'   => \$cli{infile},
@@ -680,7 +682,7 @@ sub _get_sandbox_name_from {
 	$mysql_ver = $prefix . $mysql_ver;
     $log->trace("MySQL version: $mysql_ver");
     (my $mysql_num = $mysql_ver) =~ s/\.//g;
-	($mysql_num) = ($mysql_num =~ m/\A.+?(\d+)\z/);
+	($mysql_num) = ($mysql_num =~ m/\A\D*(\d+)\z/);
     $log->trace( "MySQL num: $mysql_num" );
 
     # get opt path
@@ -906,6 +908,354 @@ SQL
 }
 
 
+### INTERFACE SUB ###
+# Usage      : edit_tokudb( $param_href );
+# Purpose    : installs TokuDB storage engine to MySQL 5.6
+# Returns    : nothing
+# Parameters : ( $param_href ) -if from command line and others for MySQL server
+# Throws     : croaks if wrong number of parameters
+# Comments   : it modifies my.cnf for TokuDB Engine (incompatible with Deep)
+# See Also   : run install_mysql() before this sub
+sub edit_tokudb {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak ('edit_tokudb() needs a $param_href' ) unless @_ == 1;
+    my ( $param_href ) = @_;
+
+    my $optedit  = $param_href->{optedit}  or $log->logcroak( 'no $optedit specified on command line!' );
+    $log->trace( "MySQL installation in: $optedit" );
+    my $sandedit = $param_href->{sandedit} or $log->logcroak( 'no $sandedit specified on command line!' );
+    $log->trace( "MySQL Sandbox in : $sandedit" );
+
+	# check transparent_hugepage=never to disable it permanently (needed for TokuDB)
+	_check_transparent_hugepage();
+
+	# update my.sandbox.cnf with libjemalloc location
+	#_jemalloc_setup( $param_href );
+	
+	# install libjemalloc from Percona repository
+	_jemalloc_install( $param_href );
+
+	#install plugin inside MySQL
+	_install_tokudb( $param_href );
+
+    # for enabling TokuDB options (only after TokuDB plugin install)
+	_enable_tokudb_options( $param_href );
+
+    return;
+}
+
+
+### INTERNAL UTILITY ###
+# Usage      : _jemalloc_install( $param_href )
+# Purpose    : install libjemalloc from Percona repository
+# Returns    : nothing
+# Parameters : $param_href
+# Throws     : croaks if wrong number of parameters
+#            : exit if install of jemalloc fails
+# Comments   : installs libjemalloc system wide
+# See Also   : tokudb_edit()
+sub _jemalloc_install {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak('_jemalloc_install() needs a $param_href') unless @_ == 1;
+    my ( $param_href ) = @_;
+
+	my $cmd_jemalloc = q{sudo yum install -y http://repo.percona.com/centos/6/os/x86_64/jemalloc-3.6.0-1.el6.x86_64.rpm};
+	$cmd_jemalloc .= q{ http://repo.percona.com/centos/6/os/x86_64/jemalloc-devel-3.6.0-1.el6.x86_64.rpm};
+    my ($stdout, $stderr, $exit) = _capture_output( $cmd_jemalloc, $param_href );
+	my $jemalloc_path = path('/usr/lib64/libjemalloc.so');
+    if ($exit == 0 or $exit == 256) {
+        # install succeeded
+		if (-e $jemalloc_path) {
+			$log->warn( "jemalloc installed systemwide in $jemalloc_path" );
+		}
+		else {
+			$log->warn( "jemalloc installed systemwide in unknown location" );
+		}
+    }
+	else {
+		# install failed
+		$log->logexit( "jemalloc install failed" );
+	}
+
+    return;
+}
+
+
+### INTERNAL UTILITY ###
+# Usage      : _jemalloc_setup_old( $param_href);
+# Purpose    : add jemalloc library to my.sandbox.cnf
+# Returns    : nothing
+# Parameters : $param_href with $sandedit and $optedit
+# Throws     : croaks if wrong number of parameters
+# Comments   : BROKEN (jemmaloc doesn't ship with Percona by default)
+# See Also   : edit_tokudb()
+sub _jemalloc_setup_old {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak('_jemalloc_setup_old() needs a $param_href') unless @_ == 1;
+    my ($param_href) = @_;
+
+    my $optedit  = $param_href->{optedit}  or $log->logcroak( 'no $optedit specified on command line!' );
+    my $sandedit = $param_href->{sandedit} or $log->logcroak( 'no $sandedit specified on command line!' );
+
+    # locations of config files and jemalloc library in Percona installation
+    my $config_path   = path( $sandedit, 'my.sandbox.cnf' );                   # for reading
+    my $config_path2  = path( $sandedit, 'my.sandbox.cnf2' );                  # for writing
+    my $jemalloc_path = path( $optedit,  'lib', 'mysql', 'plugin', 'libjemalloc.so' );   # libjemalloc location
+
+    # add jemalloc location to my.sandbox.cnf
+    my $cnf_mysqld_safe = <<"MYSQLD";
+
+# UPDATED FOR TOKUDB #
+[mysqld_safe]
+malloc_lib=$jemalloc_path
+#thp-setting=never
+
+MYSQLD
+
+    #add mysqld_safe section to my.sandbox.cnf2
+    open my $sandbox_cnf_write_fh, ">", $config_path2 or $log->logdie( "Error: can't find cnf at $config_path2: $!" );
+	my $cnf_old = path($config_path)->slurp;   #read old version
+    print {$sandbox_cnf_write_fh} $cnf_mysqld_safe;
+    print {$sandbox_cnf_write_fh} $cnf_old;
+	close $sandbox_cnf_write_fh;
+
+	# rename new with old my.sandbox.cnf (update config)
+	path($config_path2)->move($config_path) 
+	  and $log->trace( "Renamed $config_path2 to original $config_path, UPDATED with jemalloc" );
+	
+    # check visually new config if all ok
+	my $cmd_cat = qq{cat $config_path};
+	my ($stdout_cat, $stderr_cat, $exit_cat) = _capture_output( $cmd_cat, $param_href );
+	if ($exit_cat == 0) {
+		#$log->trace( "$stdout_cat" );
+	}
+
+    #restart MySQl to check if config ok
+    my $cmd_restart = path($sandedit, 'restart');
+    my ($stdout_res, $stderr_res, $exit_res) = _capture_output( $cmd_restart, $param_href );
+    if ($exit_res == 0) {
+        #restart succeeded
+        $log->warn( "Sandbox $sandedit restarted with MySQL in $optedit and $jemalloc_path added to $config_path" );
+    }
+	else {
+		#restart failed
+		$log->logexit( "Sandbox $sandedit failed to restart during $jemalloc_path UPDATE to $config_path" );
+	}
+
+    return;
+}
+
+
+### INTERNAL UTILITY ###
+# Usage      : _check_transparent_hugepage()
+# Purpose    : checks if transparent_hugepage=never in /etc/grub_cnf
+# Returns    : nothing
+# Parameters : nothing
+# Throws     : croaks if wrong number of parameters
+# Comments   : part of edit_tokudb() mode
+# See Also   : edit_tokudb()
+sub _check_transparent_hugepage {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak('_check_transparent_hugepage() needs zero params') unless @_ == 0;
+
+	# check for enabled
+	# always madvise [never]
+	my $sys_kernel_mm = path('/sys/kernel/mm/transparent_hugepage/enabled');
+	open (my $fh_sys, "<", $sys_kernel_mm) or $log->logdie( "Error: can't open $sys_kernel_mm for reading:$!" );
+	while (<$fh_sys>) {
+		chomp;
+		if (m{\[always\]}) {
+			$log->warn( "Remember to edit /etc/grub.cnf to add transparent_hugepage=never to latest installation" );
+		}
+		elsif (m{\[never\]}) {
+			$log->trace( "transparent_hugepage=never OK" );
+		}
+		else {
+			$log->error( "Error: wrong regex" );
+		}
+
+	}   #end while
+
+    return;
+}
+
+
+### CLASS METHOD/INSTANCE METHOD/INTERFACE SUB/INTERNAL UTILITY ###
+# Usage      : _install_tokudb( $param_href );
+# Purpose    : install TokuDB storage engine
+# Returns    : nothing
+# Parameters : $param_href with $sandedit and $optedit
+# Throws     : croaks if wrong number of parameters
+#            : exit if install fails
+# Comments   : part of edit_tokudb() mode
+# See Also   : edit_tokudb()
+sub _install_tokudb {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak('_install_tokudb() needs a $param_href') unless @_ == 1;
+    my ($param_href) = @_;
+
+    my $optedit  = $param_href->{optedit}  or $log->logcroak( 'no $optedit specified on command line!' );
+    my $sandedit = $param_href->{sandedit} or $log->logcroak( 'no $sandedit specified on command line!' );
+
+	# install plugin inside MySQL (manual way)
+    my $cmd_toku = path($sandedit, 'use -e ');
+    $cmd_toku .= qq{"INSTALL PLUGIN tokudb SONAME 'ha_tokudb.so'"};
+    my ($stdout_toku1, $stderr_toku1, $exit_toku1) = _capture_output( $cmd_toku, $param_href );
+    if ($exit_toku1 == 0) {
+        $log->info( "Action: Sandbox $sandedit in $optedit: tokudb installed" );
+    }
+	else {
+		$log->error( "Action: Sandbox $sandedit in $optedit: tokudb install failed" );
+		$log->logexit( qq|Report: $stderr_toku1| );
+	}
+
+    my $cmd_toku2 = path($sandedit, 'use -e ');
+    $cmd_toku2 .= qq{"INSTALL PLUGIN tokudb_file_map SONAME 'ha_tokudb.so'"};
+    my ($stdout_toku2, $stderr_toku2, $exit_toku2) = _capture_output( $cmd_toku2, $param_href );
+    if ($exit_toku2 == 0) {
+        $log->info( "Action: Sandbox $sandedit in $optedit: tokudb_file_map installed" );
+    }
+	else {
+		$log->error( "Action: Sandbox $sandedit in $optedit: tokudb_file_map install failed" );
+		$log->logexit( qq|Report: $stderr_toku2| );
+	}
+
+    my $cmd_toku3 = path($sandedit, 'use -e ');
+    $cmd_toku3 .= qq{"INSTALL PLUGIN tokudb_fractal_tree_info SONAME 'ha_tokudb.so'"};
+    my ($stdout_toku3, $stderr_toku3, $exit_toku3) = _capture_output( $cmd_toku3, $param_href );
+    if ($exit_toku3 == 0) {
+        $log->info( "Action: Sandbox $sandedit in $optedit: tokudb_fractal_tree_info installed" );
+    }
+	else {
+		$log->error( "Action: Sandbox $sandedit in $optedit: tokudb_fractal_tree_info install failed" );
+		$log->logexit( qq|Report: $stderr_toku3| );
+	}
+
+    my $cmd_toku4 = path($sandedit, 'use -e ');
+    $cmd_toku4 .= qq{ "INSTALL PLUGIN tokudb_fractal_tree_block_map SONAME 'ha_tokudb.so'"};
+    my ($stdout_toku4, $stderr_toku4, $exit_toku4) = _capture_output( $cmd_toku4, $param_href );
+    if ($exit_toku4 == 0) {
+        $log->info( "Action: Sandbox $sandedit in $optedit: tokudb_fractal_tree_block_map installed" );
+    }
+	else {
+		$log->error("Action: Sandbox $sandedit in $optedit: tokudb_fractal_tree_block_map install failed" );
+		$log->logexit( qq|Report: $stderr_toku4| );
+	}
+
+    my $cmd_toku5 = path($sandedit, 'use -e ');
+    $cmd_toku5 .= qq{"INSTALL PLUGIN tokudb_trx SONAME 'ha_tokudb.so'"};
+    my ($stdout_toku5, $stderr_toku5, $exit_toku5) = _capture_output( $cmd_toku5, $param_href );
+    if ($exit_toku5 == 0) {
+        $log->info( "Action: Sandbox $sandedit in $optedit: tokudb_trx installed" );
+    }
+	else {
+		$log->error( "Action: Sandbox $sandedit in $optedit: tokudb_trx install failed" );
+		$log->logexit( qq|Report: $stderr_toku5| );
+	}
+
+    my $cmd_toku6 = path($sandedit, 'use -e ');
+    $cmd_toku6 .= qq{"INSTALL PLUGIN tokudb_locks SONAME 'ha_tokudb.so'"};
+    my ($stdout_toku6, $stderr_toku6, $exit_toku6) = _capture_output( $cmd_toku6, $param_href );
+    if ($exit_toku6 == 0) {
+        $log->info( "Action: Sandbox $sandedit in $optedit: tokudb_locks installed" );
+    }
+	else {
+		$log->error( "Action: Sandbox $sandedit in $optedit: tokudb_locks install failed" );
+		$log->logexit( qq|Report: $stderr_toku6| );
+	}
+
+    my $cmd_toku7 = path($sandedit, 'use -e ');
+    $cmd_toku7 .= qq{"INSTALL PLUGIN tokudb_lock_waits SONAME 'ha_tokudb.so'"};
+    my ($stdout_toku7, $stderr_toku7, $exit_toku7) = _capture_output( $cmd_toku7, $param_href );
+    if ($exit_toku7 == 0) {
+        $log->info( "Action: Sandbox $sandedit in $optedit: tokudb_lock_waits installed" );
+    }
+	else {
+		$log->error( "Action: Sandbox $sandedit in $optedit: tokudb_lock_waits install failed" );
+		$log->logexit( qq|Report: $stderr_toku7| );
+	}
+
+    #restart MySQl to check if TokuDB works
+    my $cmd_restart2 = path($sandedit, 'restart');
+    my ($stdout_res2, $stderr_res2, $exit_res2) = _capture_output( $cmd_restart2, $param_href );
+    if ($exit_res2 == 0) {
+        #restart succeeded
+        $log->warn( "Sandbox $sandedit restarted with MySQL in $optedit and TokuDB engine added" );
+    }
+	else {
+		#restart failed
+		$log->logexit( "Sandbox $sandedit failed to restart AFTER TokuDB install" );
+	}
+
+    return;
+}
+
+
+### INTERNAL UTILITY ###
+# Usage      : _enable_tokudb_options( $param_href );
+# Purpose    : enables TokuDB options in my.sandbox.cnf after TokuDB is running
+# Returns    : nothing
+# Parameters : $partam_href with $sandedit and $optedit
+# Throws     : croaks if wrong number of parameters
+#            : exit if restart fails
+# Comments   : part of edit_tokudb() mode
+# See Also   : edit_tokudb()
+sub _enable_tokudb_options {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak('_enable_tokudb_options() needs a $param_href') unless @_ == 1;
+    my ($param_href) = @_;
+    my $optedit  = $param_href->{optedit}  or $log->logcroak( 'no $optedit specified on command line!' );
+    my $sandedit = $param_href->{sandedit} or $log->logcroak( 'no $sandedit specified on command line!' );
+
+    # locations of config files in Percona installation
+    my $config_path   = path( $sandedit, 'my.sandbox.cnf' );    # for reading
+    my $config_path2  = path( $sandedit, 'my.sandbox.cnf2' );   # for writing
+
+    # for enabling TokuDB options (only after TokuDB plugin install)
+	my $cnf_new = path($config_path)->slurp;   #read old version
+    $cnf_new =~ s/#tokudb_/tokudb_/g;                                #enable TokuDB options
+    $cnf_new =~ s/#default_storage_engine/default_storage_engine/;   #enable TokuDB as default engine
+	#enable TokuDB as default explicit temporary table engine
+	#implicit Memory for memory tables, and MyISAM for tables on disk
+    $cnf_new =~ s/#default_tmp_storage_engine/default_tmp_storage_engine/;
+	open my $sandbox_cnf_new_fh, ">", $config_path2 or $log->logdie( "Error: can't find cnf at $config_path2: $!" );
+    print {$sandbox_cnf_new_fh} $cnf_new;
+	close $sandbox_cnf_new_fh;
+
+	# rename configs
+	path($config_path2)->move($config_path) 
+	  and $log->trace( "Renamed $config_path2 to original $config_path UPDATED with TokuDB options" );
+	
+    #check visually if all OK
+	my $cmd_cat2 = qq{cat $config_path};
+	my ($stdout_cat2, $stderr_cat2, $exit_cat2) = _capture_output( $cmd_cat2, $param_href );
+	if ($exit_cat2 == 0) {
+		#$log->trace( "$stdout_cat2" );
+	}
+
+	#restart MySQl to check if TokuDB works (after enabling options)
+	my $cmd_restart3 = path($sandedit, 'restart');
+	my ($stdout_res3, $stderr_res3, $exit_res3) = _capture_output( $cmd_restart3, $param_href );
+    if ($exit_res3 == 0) {
+            #restart succeeded
+            $log->warn( "Sandbox $sandedit restarted with MySQL in $optedit and TokuDB options enabled in my.sandbox.cnf" );
+    }
+	else {
+		#restart failed
+		$log->logexit( "Sandbox $sandedit failed to restart AFTER enabling TokuDB options" );
+	}
+
+    return;
+}
+
+
+
+
+
+
+
+
+
 
 
 
@@ -985,6 +1335,13 @@ Installs MySQL in sandbox named after MySQL version and puts binary into "opt/my
  MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=deep_
 
 Installs MySQL with port checking and prefix. It doesn't rewrite previous MySQL instance. Useful for installing multiple MySQL servers with same version but different storage engines.
+
+=item edit_tokudb
+
+ MySQLinstall.pm --mode=edit_tokudb
+ MySQLinstall.pm --mode=edit_tokudb --sandedit=/home/msestak/sandboxes/msb_5_6_27 --optedit=/home/msestak/opt/mysql/5.6.27
+
+Installs TokuDB storage engine if transparent_hugepage=never is already set. It also updates MySQL config for TokuDB setting it as default_storage_engine (and for tmp tables too).
 
 =back
 

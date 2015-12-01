@@ -8,8 +8,9 @@ MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox us
 
     MySQLinstall --mode=wget_mysql -url http://dev.mysql.com/get/Downloads/MySQL-5.5/mysql-5.5.43-linux2.6-x86_64.tar.gz
 
-    MySQLinstall --mode=install_mysql -i ./download/mysql-5.6.26-linux-glibc2.5-x86_64.tar.gz
-    MySQLinstall --mode=install_mysql --in=./download/Percona-Server-5.6.25-rel73.1-Linux.x86_64.ssl101.tar.gz
+    MySQLinstall --mode=install_mysql -if ./download/mysql-5.6.26-linux-glibc2.5-x86_64.tar.gz
+
+    MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_
 
     MySQLinstall --mode=edit_tokudb --opt=/home/msestak/opt/mysql/5.6.25/ --sand=/home/msestak/sandboxes/msb_5_6_25/
 
@@ -66,18 +67,25 @@ MySQLinstall is installation script that installs MySQL::Sandbox using cpanm, My
 
     Installs MySQL with port checking and prefix. It doesn't rewrite previous MySQL instance. Useful for installing multiple MySQL servers with same version but different storage engines.
 
+- edit\_tokudb
+
+        MySQLinstall.pm --mode=edit_tokudb
+        MySQLinstall.pm --mode=edit_tokudb --sandedit=/home/msestak/sandboxes/msb_5_6_27 --optedit=/home/msestak/opt/mysql/5.6.27
+
+    Installs TokuDB storage engine if transparent\_hugepage=never is already set. It also updates MySQL config for TokuDB setting it as default\_storage\_engine (and for tmp tables too).
+
 # CONFIGURATION
 
-All configuration in set in mysqlinstall.cnf that is found in ./lib directory. It follows [Config::Std](https://metacpan.org/pod/Config::Std) format and rules.
+All configuration in set in mysqlinstall.cnf that is found in ./lib directory (it can also be set with --config option on command line). It follows [Config::Std](https://metacpan.org/pod/Config::Std) format and rules.
 Example:
 
     [General]
     sandbox  = /home/msestak/sandboxes
     opt      = /home/msestak/opt/mysql
-    #url      = http://dev.mysql.com/get/Downloads/MySQL-5.6/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
-    url      = https://www.percona.com/downloads/Percona-Server-5.6/Percona-Server-5.6.27-75.0/binary/tarball/Percona-Server-5.6.27-rel75.0-Linux.x86_64.ssl101.tar.gz
+    url      = http://dev.mysql.com/get/Downloads/MySQL-5.6/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
+    #url      = https://www.percona.com/downloads/Percona-Server-5.6/Percona-Server-5.6.27-75.0/binary/tarball/Percona-Server-5.6.27-rel75.0-Linux.x86_64.ssl101.tar.gz
     out      = /msestak/gitdir/MySQLinstall
-    infile   = /msestak/gitdir/MySQLinstall/lib/MySQLinstall.pm
+    infile   = $HOME/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
     
     [Database]
     host     = localhost
@@ -86,6 +94,8 @@ Example:
     password = msandbox
     port     = 5625
     socket   = /tmp/mysql_sandbox5625.sock
+    innodb   = 1G
+    prefix   = tokudb_
 
 # LICENSE
 

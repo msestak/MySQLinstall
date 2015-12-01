@@ -15,6 +15,7 @@ my @subs = qw(
   wget_mysql
   install_mysql
   install_mysql_with_prefix
+  edit_tokudb
 
 );
 
