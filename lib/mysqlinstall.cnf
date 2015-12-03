@@ -17,6 +17,6 @@ password = msandbox
 port     = 5627
 socket   = /tmp/mysql_sandbox5627.sock
 innodb   = 1G
-#prefix   = tokudb_
-prefix   = deep_
+prefix   = tokudb_
+#prefix   = deep_
 

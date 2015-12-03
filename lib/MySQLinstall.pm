@@ -958,26 +958,101 @@ sub _jemalloc_install {
     my $log = Log::Log4perl::get_logger("main");
     $log->logcroak('_jemalloc_install() needs a $param_href') unless @_ == 1;
     my ( $param_href ) = @_;
+    my $sandedit = $param_href->{sandedit} or $log->logcroak( 'no $sandedit specified on command line!' );
 
-	my $cmd_jemalloc = q{sudo yum install -y http://repo.percona.com/centos/6/os/x86_64/jemalloc-3.6.0-1.el6.x86_64.rpm};
-	$cmd_jemalloc .= q{ http://repo.percona.com/centos/6/os/x86_64/jemalloc-devel-3.6.0-1.el6.x86_64.rpm};
-    my ($stdout, $stderr, $exit) = _capture_output( $cmd_jemalloc, $param_href );
-	my $jemalloc_path = path('/usr/lib64/libjemalloc.so');
-    if ($exit == 0 or $exit == 256) {
-        # install succeeded
-		if (-e $jemalloc_path) {
-			$log->warn( "jemalloc installed systemwide in $jemalloc_path" );
-		}
+	# check PID of mysqld to check if loaded with jemalloc
+	my $malloc_type_href = _check_malloc_type_for( $param_href );
+
+	# if loaded with jemalloc (then installed)
+	if (exists $malloc_type_href->{jemalloc}) {
+		$log->warn( "jemalloc installed systemwide in $malloc_type_href->{jemalloc}" );
+	}
+	else { 
+		#install jemalloc from Percona repository
+		my $cmd_jemalloc = q{sudo yum install -y http://repo.percona.com/centos/6/os/x86_64/jemalloc-3.6.0-1.el6.x86_64.rpm};
+		$cmd_jemalloc .= q{ http://repo.percona.com/centos/6/os/x86_64/jemalloc-devel-3.6.0-1.el6.x86_64.rpm};
+	    my ($stdout, $stderr, $exit) = _capture_output( $cmd_jemalloc, $param_href );
+		my $jemalloc_path = path('/usr/lib64/libjemalloc.so');
+	    if ($exit == 0 or $exit == 256) {
+	        # install succeeded
+			if (-e $jemalloc_path) {
+				$log->warn( "jemalloc installed systemwide in $jemalloc_path" );
+			}
+			else {
+				$log->warn( "jemalloc installed systemwide in unknown location" );
+			}
+	    }
 		else {
-			$log->warn( "jemalloc installed systemwide in unknown location" );
+			# install failed
+			$log->logexit( "jemalloc install failed" );
 		}
-    }
-	else {
-		# install failed
-		$log->logexit( "jemalloc install failed" );
+
+		#restart MySQl to load with jemalloc (else TokuDB install fails)
+	    my $cmd_restart = path($sandedit, 'restart');
+	    my ($stdout_res, $stderr_res, $exit_res) = _capture_output( $cmd_restart, $param_href );
+	    if ($exit_res == 0) {
+	        #restart succeeded
+	        $log->warn( "Sandbox $sandedit restarted for jemalloc LD_PRELOAD" );
+	    }
+		else {
+			#restart failed
+			$log->logexit( "Sandbox $sandedit failed to restart AFTER jemalloc install" );
+		}
+
 	}
 
     return;
+}
+
+
+### INTERNAL UTILITY ###
+# Usage      : my $malloc_type_href = _check_malloc_type_for( $param_href );
+# Purpose    : check which malloc used to start application (MySQL server in a sandbox)
+# Returns    : $malloc_type_href
+# Parameters : $param_href with $sandedit
+# Throws     : croaks if wrong number of parameters
+# Comments   : part of _jemalloc_install() of tokudb_edit()
+# See Also   : _jemalloc_install() and tokudb_edit()
+sub _check_malloc_type_for {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak('_check_malloc_type_for() needs a $param_href') unless @_ == 1;
+    my ($param_href) = @_;
+    my $sandedit = $param_href->{sandedit} or $log->logcroak( 'no $sandedit specified on command line!' );
+
+	#check PID of mysqld to check if loaded with jemalloc or tcmalloc
+	my $datadir = path($sandedit, 'data');
+	my ($mysqld_pid_file) = File::Find::Rule->file()->name( '*.pid' )->in($datadir);
+	#/home/msestak/sandboxes/msb_5_6_27/data/mysql_sandbox5627.pid
+	$log->trace( "Action: found $mysqld_pid_file" );
+
+	# get pid from .pid file
+    open my $pid_fh, '<', $mysqld_pid_file or $log->logdie( "Error: can't open pid file:$mysqld_pid_file:$!" );
+    chomp(my $mysqld_pid = <$pid_fh>);
+    close $pid_fh;
+	$log->trace( "Action: found mysqld PID:$mysqld_pid" );
+
+	#check LD_PRELOAD variable
+	my %malloc_type;
+	my $pid_environ = path('/proc', $mysqld_pid, 'environ')->canonpath;
+	my $entire_environ = path($pid_environ)->slurp;   # read entire binary file
+	if ($entire_environ =~ m{jemalloc}) {
+		$log->info( "Report: jemalloc found for $sandedit:$pid_environ" );
+		if ($entire_environ =~ m{LD_PRELOAD=([^[:upper:]]+)}) {
+			$malloc_type{jemalloc} = $1;
+		}
+	}
+	elsif ($entire_environ =~ m{tcmalloc}) {
+		$log->info( "Report: tcmalloc found for $sandedit:$pid_environ" );
+		if ($entire_environ =~ m{LD_PRELOAD=([^[:upper:]]+)}) {
+			$malloc_type{tcmalloc} = $1;
+		}
+	}
+	else {
+		$log->info( "Report: standard malloc found for $sandedit:$pid_environ" );
+		$malloc_type{malloc} = 1;
+	}
+
+	return \%malloc_type;
 }
 
 
@@ -1052,6 +1127,7 @@ MYSQLD
 # Returns    : nothing
 # Parameters : nothing
 # Throws     : croaks if wrong number of parameters
+#            : exit if transparent_hugepage enabled
 # Comments   : part of edit_tokudb() mode
 # See Also   : edit_tokudb()
 sub _check_transparent_hugepage {
@@ -1065,10 +1141,10 @@ sub _check_transparent_hugepage {
 	while (<$fh_sys>) {
 		chomp;
 		if (m{\[always\]}) {
-			$log->warn( "Remember to edit /etc/grub.cnf to add transparent_hugepage=never to latest installation" );
+			$log->logexit( "Remember to edit /etc/grub.cnf to add transparent_hugepage=never to latest installation" );
 		}
 		elsif (m{\[never\]}) {
-			$log->trace( "transparent_hugepage=never OK" );
+			$log->info( "transparent_hugepage=never OK" );
 		}
 		else {
 			$log->error( "Error: wrong regex" );
