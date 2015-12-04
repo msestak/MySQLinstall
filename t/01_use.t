@@ -16,6 +16,7 @@ my @subs = qw(
   install_mysql
   install_mysql_with_prefix
   edit_tokudb
+  edit_deep_report
 
 );
 

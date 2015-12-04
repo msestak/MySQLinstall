@@ -28,6 +28,7 @@ our @EXPORT_OK = qw{
   install_mysql
   install_mysql_with_prefix
   edit_tokudb
+  edit_deep_report
 
 };
 
@@ -329,7 +330,7 @@ sub _capture_output {
 }
 
 ### INTERNAL UTILITY ###
-# Usage      : _exec_cmd($cmd_git, $param_href);
+# Usage      : _exec_cmd($cmd_git, $param_href, $cmd_info);
 # Purpose    : accepts command, executes it and checks for success
 # Returns    : prints info
 # Parameters : ($cmd_to_execute, $param_href)
@@ -338,7 +339,7 @@ sub _capture_output {
 # See Also   :
 sub _exec_cmd {
     my $log = Log::Log4perl::get_logger("main");
-    $log->logdie( '_exec_cmd() needs a $cmd, $param_href and info' ) unless (@_ ==  2 or 1);
+    $log->logdie( '_exec_cmd() needs a $cmd, $param_href and info' ) unless (@_ ==  2 or 3);
 	croak( '_exec_cmd() needs a $cmd' ) unless (@_ == 2 or 3);
     my ($cmd, $param_href, $cmd_info) = @_;
 	if (!defined $cmd_info) {
@@ -635,12 +636,11 @@ SQL
     $log->info("MySQL config $mysql_cnf_path modified for InnoDB" );
     close $sandbox_cnf_fh;
 
-
     #delete InnoDB logfiles (else it doesn't start)
     foreach my $i (0..1) {
         my $log_file = path($mysql_datadir, 'ib_logfile' . $i);
-        unlink $log_file and $log->trace( "InnoDB logfile $log_file deleted" ) 
-          or $log->logdie( "InnoDB file: $log_file not found: $!" );
+        unlink $log_file or $log->logdie( "Error: InnoDB file: $log_file not found: $!" );
+	    $log->trace( "Action: InnoDB logfile $log_file deleted" )
     }
 
     #restart MySQl to check if config ok
@@ -648,11 +648,11 @@ SQL
     my ($stdout_res, $stderr_res, $exit_res) = _capture_output( $cmd_restart, $param_href );
         if ($exit_res == 0) {
                 #restart succeeded
-                $log->warn( "Sandbox $sandbox_path restarted with MySQL in $opt_path" );
+                $log->warn( "Action: sandbox $sandbox_path restarted with MySQL in $opt_path" );
         }
 		else {
 			#restart failed
-			$log->logexit( "Sandbox $sandbox_path failed to restart AFTER updating InnoDB options" );
+			$log->logexit( "Action: sandbox $sandbox_path failed to restart AFTER updating InnoDB options" );
 		}
 
     return;
@@ -1325,6 +1325,350 @@ sub _enable_tokudb_options {
 }
 
 
+### INTERFACE SUB ###
+# Usage      : edit_deep_report( $param_href );
+# Purpose    : installs Deep storage engine to MySQL (adds cron job with reporting to deep.is
+# Returns    : nothing
+# Parameters : ( $param_href ) -if from command line
+# Throws     : croaks if wrong number of parameters
+# Comments   : it modifies my.cnf for Deep Engine (incompatible with TokuDB)
+# See Also   : run install_mysql() before this sub
+sub edit_deep_report {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak('edit_deep_report() needs a $param_href') unless @_ == 1;
+    my ($param_href) = @_;
+
+    my $infile   = $param_href->{infile}   or $log->logcroak('no $infile specified on command line!');
+    my $optedit  = $param_href->{optedit}  or $log->logcroak('no $optedit specified on command line!');
+    my $sandedit = $param_href->{sandedit} or $log->logcroak('no $sandedit specified on command line!');
+    $log->trace("Deep plugin in tar.gz format: $infile");
+    $log->trace("MySQL installation in: $optedit");
+    $log->trace("MySQL sandbox in : $sandedit");
+
+    # extracts Deep engine tar files and moves them into location
+    _extract_deep($param_href);
+
+    # updates my.sandbox.cnf to add tcmalloc to mysqld_safe section
+    _add_tcmalloc_to_config($param_href);
+
+    # install Deep plugin inside MySQL and add Deep options to my.sandbox.cnf
+    _deep_install_and_enable_options($param_href);
+
+    return;
+}
+
+
+### INTERNAL UTILITY ###
+# Usage      : _extract_deep( $param_href );
+# Purpose    : extracts Deep engine tar files and moves them into location
+# Returns    : nothing
+# Parameters : $param_href for infile amd out
+# Throws     : croaks if wrong number of parameters
+#            : exit if untar fails
+# Comments   : part of edit_deep_report()
+# See Also   : edit_deep_report()
+sub _extract_deep {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak('_extract_deep() needs a $param_href') unless @_ == 1;
+    my ($param_href) = @_;
+    my $infile = $param_href->{infile} or $log->logcroak('no $infile specified on command line!');
+    my $sandedit = $param_href->{sandedit} or $log->logcroak('no $sandedit specified on command line!');
+    my $optedit  = $param_href->{optedit}  or $log->logcroak( 'no $optedit specified on command line!' );
+
+	#remove dir with extracted files
+	my $path_extract_here = path($infile)->parent;
+	(my $path_extracted = $infile) =~ s/\A(.+?)\.tar\.gz\z/$1/;
+	if (-d $path_extracted) {
+		$log->warn( "$path_extracted found: deleting it!" );
+		path($path_extracted)->remove_tree and $log->warn( "$path_extracted deleted!" );
+	}
+
+	#now extract files and do something for each file
+    my $cmd_untar = qq{tar -xzvf $infile -C $path_extract_here};
+    my ($stdout_untar, $stderr_untar, $exit_untar) = _capture_output( $cmd_untar, $param_href );
+        if ($exit_untar == 0 and -d $path_extracted) {
+            #extract succeeded
+            $log->trace( "Deep tar.gz extracted to $path_extracted" );
+
+			# collect all extracted files
+			my @deep_files = File::Find::Rule->file()
+                             ->name( '*' )
+                             ->in( $path_extracted );
+			
+			#print found files to log
+			if (@deep_files) {
+				my $deep_files = join("\n", @deep_files);
+				$log->trace( qq|Report:$deep_files| );
+			}
+			else {
+				$log->logexit( qq|No deep_files found| );
+			}
+
+            #move files to $optedit (MySQL installation dir)
+            DEEPFILES:
+            foreach my $file (@deep_files) {
+                if ($file =~ /ha_deep.so/) {
+					my $path_plugins = path($optedit, 'lib', 'plugin');
+                    path($file)->copy($path_plugins)
+				      and $log->info( "Action: file $file copied to MySQL plugin dir at $path_plugins" );
+                }
+                elsif($file =~ /libtcmalloc_minimal.so/) {
+					my $path_tcmalloc = path($optedit, 'lib', 'libtcmalloc_minimal.so');
+                    path($file)->move($path_tcmalloc)
+                      and $log->info( "Action: file $file replaced MySQL's original lib at $path_tcmalloc" );
+                }
+                elsif($file =~ /deep-license.sh/) {
+					#first copy it
+					my $path_opt_scripts = path($optedit, 'scripts');
+					path($file)->copy($path_opt_scripts)
+                      and $log->info( "Action: licence $file copied to $path_opt_scripts!" );
+
+				    #make it executable to be able to run it
+				    my $path_license = path($path_opt_scripts, 'deep-license.sh');
+					chmod 0777, $path_license and $log->trace( "Action: license $path_license mode changed to 0777" );
+
+					#run a license file to create a log
+					my $path_datadir = path($sandedit, 'data')->canonpath;
+					my $path_datadir_log = path($path_datadir, 'deep_usage.log')->canonpath;
+					my $cmd_run = qq{$path_license -a install -p yes -l $path_datadir_log -d $path_datadir};
+					my ($stdout_run, $stderr_run, $exit_run) = _capture_output( $cmd_run, $param_href );
+					if ($exit_run == 0) {
+						$log->trace( "Action: Deep log created at $path_datadir_log!" );
+					}
+
+					#change permissions on deep_usage_log
+					chmod 0777, $path_datadir_log and $log->trace( "Action: license's $path_datadir_log mode changed to 0777" );
+
+					#setup a cron job for report
+					_setup_cron_job_for( $param_href, $path_license, $path_datadir_log, $path_datadir, $path_opt_scripts);
+
+                }
+				else {
+					$log->error( "Error: new $file found" );
+				}
+            }
+        }
+	#exit if untar fails
+	else {
+		$log->logexit( qq|Error: $stdout_untar| );
+	}
+	
+	#clean extracted dir
+	if (-d $path_extracted) {
+		$log->trace( "$path_extracted left: cleaning it!" );
+		path($path_extracted)->remove_tree and $log->info( "$path_extracted deleted!" );
+	}
+
+    return;
+}
+
+
+### INTERNAL UTILITY ###
+# Usage      : _setup_cron_job_for( $param_href, $path_license, $path_datadir_log, $path_datadir, $path_opt_scripts);
+# Purpose    : setup a cron job to report Deep usage to Deep.is
+# Returns    : nothing
+# Parameters : 
+# Throws     : croaks if wrong number of parameters
+# Comments   : part of _extract_deep() of edit_deep_report()
+# See Also   : _extract_deep()
+sub _setup_cron_job_for {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak('_setup_cron_job_for() needs a $param_href + 4 other') unless @_ == 5;
+    my ($param_href) = @_;
+	my ($path_license, $path_datadir_log, $path_datadir, $path_opt_scripts) = @_;
+
+	#command to run in cron
+	my $cmd = qq{$path_license -a stats -p yes -l $path_datadir_log -d $path_datadir};
+
+	#making a new crontab from scratch
+	require Config::Crontab;
+
+	#make a new crontab object
+	my $ct = new Config::Crontab;
+	$ct->owner("$ENV{HOME}");
+
+	#make a new Event object
+	my $event = new Config::Crontab::Event(
+	  -minute  => 02,
+	  -hour    => 4,
+	  -command => "$cmd");
+
+	#make a new Block object
+	my $block = new Config::Crontab::Block;
+	#add created event to the block object
+	$block->last($event);
+	#add this block to the crontab object
+	$ct->last($block);
+
+	## write out crontab file
+	my $mysql_name = path($param_href->{optedit})->basename;
+	$mysql_name =~ s/\.//g;
+	my $path_cron = path($path_opt_scripts, 'deep_license' . $mysql_name);
+	$ct->write($path_cron) and $log->debug( "Cron job created at $path_cron" ) or do {
+		warn "Error: " . $ct->error . "\n";
+		return;
+	};
+
+	#add to crontab
+	my $cmd_add_to_crontab = qq{crontab $path_cron};
+	my ($stdout_cronadd, $stderr_cronadd, $exit_cronadd) = _capture_output( $cmd_add_to_crontab, $param_href );
+	if ($exit_cronadd == 0) {
+		$log->info( qq|Action: crontab $path_cron added to crontab| );
+	}
+	else {
+		#not installed
+		my $cmd_crontab = q{sudo yum install -y cronie};
+		_exec_cmd($cmd_crontab, $param_href, 'yum cronie install');
+	}
+	
+	#check for existence of created crontab
+	# same as 'crontab -l' except pretty-printed
+	my $ct_check = new Config::Crontab;
+	$ct_check->read;
+	my $crontab = sprintf("%s", $ct_check->dump);
+	$log->debug( qq|Report: $crontab| );
+
+    return;
+}
+
+
+### CLASS METHOD/INSTANCE METHOD/INTERFACE SUB/INTERNAL UTILITY ###
+# Usage      : _add_tcmalloc_to_config( $param_href );
+# Purpose    : updates my.sandbox.cnf to add tcmalloc to mysqld_safe section
+# Returns    : nothing
+# Parameters : $param_href
+# Throws     : croaks if wrong number of parameters
+# Comments   : part of edit_deep_report()
+# See Also   : edit_deep_report()
+sub _add_tcmalloc_to_config {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak('_add_tcmalloc_to_config() needs a $param_href') unless @_ == 1;
+    my ($param_href) = @_;
+    my $optedit  = $param_href->{optedit}  or $log->logcroak('no $optedit specified on command line!');
+    my $sandedit = $param_href->{sandedit} or $log->logcroak('no $sandedit specified on command line!');
+
+    #change my.cnf options
+    my $config_path  = path( $sandedit, 'my.sandbox.cnf' );     # original config
+    my $config_path2 = path( $sandedit, 'my.sandbox.cnf2' );    # modified config
+    my $cnf_mysqld_safe = <<"MYSQLD";
+
+[mysqld_safe]
+malloc_lib=tcmalloc
+
+MYSQLD
+
+    #add mysqld_safe section
+    open my $sandbox_cnf_write_fh, ">", $config_path2 or $log->logdie("Can't find cnf at $config_path2: $!");
+    my $cnf_old = path($config_path)->slurp;                    #read old version
+
+    print {$sandbox_cnf_write_fh} $cnf_mysqld_safe;
+    print {$sandbox_cnf_write_fh} $cnf_old;
+    close $sandbox_cnf_write_fh;
+
+    path($config_path2)->move($config_path)
+      and $log->trace("Action: renamed $config_path2 to original $config_path");
+
+    my $cmd_cat = qq{cat $config_path};
+    my ( $stdout_cat, $stderr_cat, $exit_cat ) = _capture_output( $cmd_cat, $param_href );
+
+    #restart MySQl to check if config ok
+    my $cmd_restart = path( $sandedit, 'restart' );
+    my ( $stdout_res, $stderr_res, $exit_res ) = _capture_output( $cmd_restart, $param_href );
+    if ( $exit_res == 0 ) {
+        #restart succeeded
+        $log->warn(
+            "Report: sandbox $sandedit restarted with MySQL in $optedit and tcmalloc options added to $config_path");
+    }
+    else {
+        #restart failed
+        $log->error(qq|Error: $stderr_res|);
+        $log->logexit("Error: sandbox $sandedit failed to restart during tcmalloc UPDATE to $config_path");
+    }
+
+	#check if MySQL server started with tcmalloc (then installed)
+	my $malloc_type_href = _check_malloc_type_for( $param_href );
+	if (exists $malloc_type_href->{tcmalloc}) {
+		$log->warn( "Report: tcmalloc installed in $malloc_type_href->{tcmalloc}" );
+	}
+
+    return;
+}
+
+
+
+### CLASS METHOD/INSTANCE METHOD/INTERFACE SUB/INTERNAL UTILITY ###
+# Usage      : _deep_install_and_enable_options( $param_href );
+# Purpose    : installs Deep engine and updated my.sandbox.cnf for Deep options
+# Returns    : nothing
+# Parameters : $param_href for sandedit and optedit
+# Throws     : croaks if wrong number of parameters
+# Comments   : part of edit_deep_report()
+# See Also   : edit_deep_report()
+sub _deep_install_and_enable_options {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak('_deep_install_and_enable_options() needs a $param_href') unless @_ == 1;
+    my ($param_href) = @_;
+    my $optedit  = $param_href->{optedit}  or $log->logcroak('no $optedit specified on command line!');
+    my $sandedit = $param_href->{sandedit} or $log->logcroak('no $sandedit specified on command line!');
+
+    # install Deep plugin inside MySQL
+    my $cmd_deep = path( $sandedit, 'use' );
+    $cmd_deep .= qq{ -e "INSTALL PLUGIN Deep SONAME 'ha_deep.so'"};
+    my ( $stdout_deep, $stderr_deep, $exit_deep ) = _capture_output( $cmd_deep, $param_href );
+    if ( $exit_deep == 0 ) {
+        #installation succeeded
+        $log->info("Action: sandbox $sandedit in $optedit: Deep engine INSTALLED");
+    }
+    else {
+        #installation failed
+        $log->error(qq|Error: $stderr_deep|);
+        $log->logexit(qq|Error: sandbox $sandedit in $optedit: Deep engine failed to install|);
+    }
+
+    #update MySQL config files with Deep options
+    my $config_path = path( $sandedit, 'my.sandbox.cnf' );
+    open my $sandbox_cnf_fh, ">>", $config_path or $log->logdie("Can't find my.sandbox.cnf at $config_path: $!");
+    my $cnf_activation = <<"SQL";
+
+## Deep #
+deep-activation-key            = 01010100a0y13000006QeuR1463097600
+deep_mode_key_compress         = ON
+deep_mode_value_compress       = ON
+deep_cache_size                = 1G
+default_storage_engine         = Deep
+default_tmp_storage_engine     = Deep
+deep_value_compress_percent    = 15
+deep_mode_durable              = OFF
+deep_durable_sync_interval     = 0
+deep_worker_threads            = 6
+
+SQL
+
+    #add activation
+    print {$sandbox_cnf_fh} $cnf_activation, "\n";
+    $log->info("Action: MySQL config $config_path modified with activation for Deep");
+    close $sandbox_cnf_fh;
+
+    my $cmd_cat = qq{cat $config_path};
+    my ( $stdout_cat, $stderr_cat, $exit_cat ) = _capture_output( $cmd_cat, $param_href );
+
+    #restart MySQl to check if Deep works
+    my $cmd_restart = path( $sandedit, 'restart' );
+    my ( $stdout_res, $stderr_res, $exit_res ) = _capture_output( $cmd_restart, $param_href );
+    if ( $exit_res == 0 ) {
+        #restart succeeded
+        $log->warn(
+            "Action: sandbox $sandedit restarted with MySQL in $optedit and Deep engine added (and activation to my.cnf)"
+        );
+    }
+    else {
+        #restart failed
+        $log->error(qq|Error: $stderr_res|);
+        $log->logexit("Error: sandbox $sandedit failed to restart AFTER Deep install and activation to my.cnf");
+    }
+
+    return;
+}
 
 
 
@@ -1342,7 +1686,7 @@ __END__
 
 =head1 NAME
 
-MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox using cpanm, MySQL in a sandbox, additional engines like TokuDB and Deep and updates configuration. To install Perl use Perlinstall.pm.
+MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox using cpanm, MySQL in a sandbox, additional engines like TokuDB and Deep and updates configuration. If you want to install newer Perl on your machine you can use L<< To install Perl use Perlinstall.pm.
 
 =head1 SYNOPSIS
 
@@ -1407,6 +1751,7 @@ Installs MySQL in sandbox named after MySQL version and puts binary into "opt/my
 
 =item install_mysql_with_prefix
 
+ MySQLinstall.pm --mode=install_mysql_with_prefix
  MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_
  MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=deep_
 
@@ -1418,6 +1763,13 @@ Installs MySQL with port checking and prefix. It doesn't rewrite previous MySQL 
  MySQLinstall.pm --mode=edit_tokudb --sandedit=/home/msestak/sandboxes/msb_5_6_27 --optedit=/home/msestak/opt/mysql/5.6.27
 
 Installs TokuDB storage engine if transparent_hugepage=never is already set. It also updates MySQL config for TokuDB setting it as default_storage_engine (and for tmp tables too).
+
+=item edit_deep_report
+
+ MySQLinstall.pm --mode=edit_deep_report
+ MySQLinstall.pm --mode=edit_deep_report --infile=./download/deep-mysql-5.6.26-community-plugin-3.2.0.19896.el6.x86_64.tar.gz --sandedit=/home/msestak/sandboxes/msb_5_6_27 --optedit=/home/msestak/opt/mysql/5.6.27
+
+Installs Deep storage engine from downloaded tar.gz archive. It also updates MySQL config for Deep setting it as default_storage_engine (and for tmp tables too).
 
 =back
 

@@ -3,9 +3,9 @@ sandbox  = /home/msestak/sandboxes
 opt      = /home/msestak/opt/mysql
 #url      = http://dev.mysql.com/get/Downloads/MySQL-5.6/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
 url      = https://www.percona.com/downloads/Percona-Server-5.6/Percona-Server-5.6.27-75.0/binary/tarball/Percona-Server-5.6.27-rel75.0-Linux.x86_64.ssl101.tar.gz
-out      = /msestak/gitdir/MySQLinstall
-#infile   = /home/msestak/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
-infile   = /home/msestak/Percona-Server-5.6.27-rel75.0-Linux.x86_64.ssl101.tar.gz
+#out      = /msestak/gitdir/MySQLinstall
+infile   = /home/msestak/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
+#infile   = /home/msestak/Percona-Server-5.6.27-rel75.0-Linux.x86_64.ssl101.tar.gz
 sandedit = /home/msestak/sandboxes/msb_5_6_27
 optedit  = /home/msestak/opt/mysql/5.6.27
 

@@ -1,5 +1,5 @@
 {
-   "abstract" : "is installation script (modulino) that installs MySQL::Sandbox using cpanm, MySQL in a sandbox, additional engines like TokuDB and Deep and updates configuration. To install Perl use Perlinstall.pm.",
+   "abstract" : "is installation script (modulino) that installs MySQL::Sandbox using cpanm, MySQL in a sandbox, additional engines like TokuDB and Deep and updates configuration. If you want to install newer Perl on your machine you can use L<< To install Perl use Perlinstall.pm.",
    "author" : [
       "tar.gz"
    ],

@@ -1,6 +1,6 @@
 # NAME
 
-MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox using cpanm, MySQL in a sandbox, additional engines like TokuDB and Deep and updates configuration. To install Perl use Perlinstall.pm.
+MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox using cpanm, MySQL in a sandbox, additional engines like TokuDB and Deep and updates configuration. If you want to install newer Perl on your machine you can use ["To install Perl use Perlinstall.pm."](#to-install-perl-use-perlinstall-pm)
 
 # SYNOPSIS
 
@@ -62,6 +62,7 @@ MySQLinstall is installation script that installs MySQL::Sandbox using cpanm, My
 
 - install\_mysql\_with\_prefix
 
+        MySQLinstall.pm --mode=install_mysql_with_prefix
         MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_
         MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=deep_
 
@@ -73,6 +74,13 @@ MySQLinstall is installation script that installs MySQL::Sandbox using cpanm, My
         MySQLinstall.pm --mode=edit_tokudb --sandedit=/home/msestak/sandboxes/msb_5_6_27 --optedit=/home/msestak/opt/mysql/5.6.27
 
     Installs TokuDB storage engine if transparent\_hugepage=never is already set. It also updates MySQL config for TokuDB setting it as default\_storage\_engine (and for tmp tables too).
+
+- edit\_deep\_report
+
+        MySQLinstall.pm --mode=edit_deep_report
+        MySQLinstall.pm --mode=edit_deep_report --infile=./download/deep-mysql-5.6.26-community-plugin-3.2.0.19896.el6.x86_64.tar.gz --sandedit=/home/msestak/sandboxes/msb_5_6_27 --optedit=/home/msestak/opt/mysql/5.6.27
+
+    Installs Deep storage engine from downloaded tar.gz archive. It also updates MySQL config for Deep setting it as default\_storage\_engine (and for tmp tables too).
 
 # CONFIGURATION
 
@@ -124,3 +132,11 @@ mocnii <msestak@irb.hr>
 
     MySQLinstall --mode=install_mysql -i ./download/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
     MySQLinstall --mode=edit_deep_report -i ./download/deep-mysql-5.6.27-community-plugin-3.3.0.20340.el6.x86_64.tar.gz --sand=/home/msestak/sandboxes/msb_5_6_27/ --opt=/home/msestak/opt/mysql/5.6.27/
+
+# POD ERRORS
+
+Hey! **The above document had some coding errors, which are explained below:**
+
+- Around line 1684:
+
+    Unterminated L< ... > sequence
