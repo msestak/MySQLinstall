@@ -1424,7 +1424,7 @@ sub _extract_deep {
                       and $log->info( "Action: licence $file copied to $path_opt_scripts!" );
 
 				    #make it executable to be able to run it
-				    my $path_license = path($path_opt_scripts, 'deep-license.sh');
+				    my $path_license = path($path_opt_scripts, 'deep-license.sh')->canonpath;
 					chmod 0777, $path_license and $log->trace( "Action: license $path_license mode changed to 0777" );
 
 					#run a license file to create a log
@@ -1440,7 +1440,8 @@ sub _extract_deep {
 					chmod 0777, $path_datadir_log and $log->trace( "Action: license's $path_datadir_log mode changed to 0777" );
 
 					#setup a cron job for report
-					_setup_cron_job_for( $param_href, $path_license, $path_datadir_log, $path_datadir, $path_opt_scripts);
+					_setup_cron_job_for( $param_href, $path_datadir_log, $path_datadir, $path_opt_scripts);
+
 
                 }
 				else {
@@ -1464,7 +1465,7 @@ sub _extract_deep {
 
 
 ### INTERNAL UTILITY ###
-# Usage      : _setup_cron_job_for( $param_href, $path_license, $path_datadir_log, $path_datadir, $path_opt_scripts);
+# Usage      : _setup_cron_job_for( $param_href, $path_datadir_log, $path_datadir, $path_opt_scripts);
 # Purpose    : setup a cron job to report Deep usage to Deep.is
 # Returns    : nothing
 # Parameters : 
@@ -1473,9 +1474,9 @@ sub _extract_deep {
 # See Also   : _extract_deep()
 sub _setup_cron_job_for {
     my $log = Log::Log4perl::get_logger("main");
-    $log->logcroak('_setup_cron_job_for() needs a $param_href + 4 other') unless @_ == 5;
-    my ($param_href) = @_;
-	my ($path_license, $path_datadir_log, $path_datadir, $path_opt_scripts) = @_;
+    $log->logcroak('_setup_cron_job_for() needs a $param_href + 3 other') unless @_ == 4;
+    my ($param_href, $path_datadir_log, $path_datadir, $path_opt_scripts) = @_;
+	my $path_license = path($path_opt_scripts, 'deep-license.sh')->canonpath;
 
 	#command to run in cron
 	my $cmd = qq{$path_license -a stats -p yes -l $path_datadir_log -d $path_datadir};
