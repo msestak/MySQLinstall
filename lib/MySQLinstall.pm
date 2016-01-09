@@ -29,6 +29,7 @@ our @EXPORT_OK = qw{
   install_mysql_with_prefix
   edit_tokudb
   edit_deep_report
+  install_scaledb
 
 };
 
@@ -88,6 +89,7 @@ sub run {
         install_mysql_with_prefix => \&install_mysql_with_prefix,    # installs MySQL with different port and prefix
         edit_tokudb               => \&edit_tokudb,                  # install TokuDB storage engine with Percona
         edit_deep_report          => \&edit_deep_report,             # install Deep engine (with reporting to deep.is)
+        install_scaledb           => \&install_scaledb,              # install MariaDB with ScaleDB engine
 
     );
 
@@ -1671,7 +1673,205 @@ SQL
     return;
 }
 
+### INTERFACE SUB ###
+# Usage      : install_scaledb( $param_href );
+# Purpose    : installs MariaDB binary using MySQL::Sandbox with check port enabled and ScaleDB
+# Returns    : nothing
+# Parameters : ( $param_href ) --infile from command line
+# Throws     : croaks if wrong number of parameters
+# Comments   : it modifies my.cnf for high performance too
+# See Also   :
+sub install_scaledb {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak ('install_scaledb() needs a $param_href' ) unless @_ == 1;
+    my ( $param_href ) = @_;
+    my $infile = $param_href->{infile} or $log->logcroak( 'no $infile specified on command line!' );
+    my $prefix = $param_href->{prefix} or $log->logcroak( 'no $prefix specified on command line!' );
+    my $opt = $param_href->{opt}       or $log->logcroak( 'no $opt specified on command line!' );
 
+	# install libraries needed by ScaleDB
+	_install_scaledb_prereq( $param_href );
+
+	# setup of sandbox and opt names
+	my ( $mysql_ver, $mysql_num, $sandbox_path, $opt_path ) = _get_sandbox_name_from( $infile, $prefix );
+
+	# check for existence of sandbox dir
+    if (-d $sandbox_path) {
+        $log->warn( "Report: sandbox $sandbox_path already exists" );
+	}
+
+	# check for existence of opt/mysql dir
+	if (-d $opt_path) {
+		$log->warn( "Report: extracted $mysql_ver already exists in $opt_path" );
+	}
+
+    #fresh install
+	#set variables for sandbox, opt, new port
+	my ($sandbox_port, $sandbox_dir, $opt_basedir);
+    $log->info( "Action: installing $mysql_ver with port checking and prefix={$prefix}" );
+    my $cmd_make = qq{make_sandbox --export_binaries $infile --add_prefix=$prefix -- --check_port --no_confirm};
+    my ($stdout, $stderr, $exit) = _capture_output( $cmd_make, $param_href );
+    if ($exit == 0) {
+        #install succeeded
+		open (my $stdout_fh, "<", \$stdout) or $log->logdie( "Error: can't open $stdout for reading:$!" );
+
+		while (<$stdout_fh>) {
+			chomp;
+			if (m{\Asandbox_port\s+=\s+(\d+)\z}) {
+				$sandbox_port = $1;
+			}
+			if (m{\Asandbox_directory\s+=\s+(.+)\z}) {
+				$sandbox_dir = $1;
+				$sandbox_dir = path($ENV{SANDBOX_HOME}, $sandbox_dir);
+			}
+			if (m{\Abasedir\s+=\s+(.+)\z}) {
+				$opt_basedir = $1;
+			}
+		}   # end while
+
+        $log->info( "Report: sandbox installed in $sandbox_dir with MySQL in $opt_basedir port:{$sandbox_port}" );
+    }
+	else {
+		$log->error( "Error: MySQL$mysql_ver failed to install" );
+		$log->logexit( "Error: $stderr" );
+	}
+
+    #check my.cnf options
+	my ($mysql_cnf_path, $mysql_datadir) = _check_my_cnf_for( $sandbox_dir, $opt_basedir );
+
+    #change my.cnf options
+    open my $sandbox_cnf_fh, ">>", $mysql_cnf_path or $log->logdie( "Can't find cnf: $!" );
+	#set innodb-buffer-pool-size
+	my $innodb_buffer = defined $param_href->{innodb} ? $param_href->{innodb} : '1G';
+
+my $cnf_options = <<"SQL";
+
+# MyISAM #
+key-buffer-size                = 32M
+myisam-recover-options         = FORCE,BACKUP
+
+# SAFETY #
+max-allowed-packet             = 16M
+max-connect-errors             = 1000000
+skip-name-resolve
+sql-mode                       = STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION,NO_ZERO_DATE,NO_ZERO_IN_DATE
+sysdate-is-now                 = 1
+#innodb                         = FORCE
+innodb-strict-mode             = 1
+
+# TRANSACTION ISOLATION
+# default is: transaction-isolation = REPEATABLE-READ
+transaction-isolation          = READ-COMMITTED
+
+# BINARY LOGGING #
+#server-id                      = $sandbox_port
+#log-bin                        = mysql-bin
+#expire-logs-days               = 14
+#sync-binlog                    = 1
+
+# CACHES AND LIMITS #
+#warning: large tmp table sizes (use for OLAP only)
+tmp-table-size                 = 100M
+max-heap-table-size            = 100M
+query-cache-type               = 0
+query-cache-size               = 0
+max-connections                = 500
+thread-cache-size              = 50
+open-files-limit               = 65535
+table-definition-cache         = 1024
+table-open-cache               = 2048
+
+# INNODB #
+innodb-flush-method            = O_DIRECT
+innodb-log-files-in-group      = 2
+innodb-log-file-size           = 1G
+innodb-flush-log-at-trx-commit = 2
+innodb-file-per-table          = 1
+innodb-buffer-pool-size        = $innodb_buffer
+#default: innodb-buffer-pool-instances   = 8
+innodb-buffer-pool-instances   = 1
+innodb_doublewrite             = OFF
+
+# TIMEZONE #
+character_set_server           = latin1
+collation_server               = latin1_swedish_ci
+
+# LOGGING #
+slow-query-log                 = off
+#slow-query-log-file            = $sandbox_dir/data/msandbox-slow.log
+#log-queries-not-using-indexes  = 1
+#long_query_time                = 0
+#log-error                      = $sandbox_dir/data/msandbox.err
+performance_schema             = off
+
+# TokuDB #
+#tokudb_cache_size              = 1G
+#tokudb_data_dir                = $sandbox_dir/data
+#tokudb_log_dir                 = $sandbox_dir/data
+#tokudb_tmp_dir                 = $sandbox_dir/data
+#tokudb_commit_sync             = 1
+#tokudb_directio                = 0
+#tokudb_load_save_space         = 1
+#default_storage_engine         = TokuDB
+#default_tmp_storage_engine     = TokuDB
+SQL
+
+    print {$sandbox_cnf_fh} $cnf_options, "\n";
+    $log->info("MySQL config $mysql_cnf_path modified for InnoDB" );
+    close $sandbox_cnf_fh;
+
+
+    #delete InnoDB logfiles (else it doesn't start)
+    foreach my $i (0..1) {
+        my $log_file = path($mysql_datadir, 'ib_logfile' . $i);
+        unlink $log_file and $log->trace( "Action: InnoDB logfile $log_file deleted" ) 
+          or $log->logdie( "Error: InnoDB file: $log_file not found: $!" );
+    }
+
+    #restart MySQl to check if config ok
+    my $cmd_restart = path($sandbox_dir, 'restart');
+    my ($stdout_res, $stderr_res, $exit_res) = _capture_output( $cmd_restart, $param_href );
+        if ($exit_res == 0) {
+                #restart succeeded
+                $log->warn( "Action: sandbox $sandbox_dir restarted with MySQL in $opt_basedir port{$sandbox_port}" );
+        }
+		else {
+			#restart failed
+			$log->logexit( "Error: sandbox $sandbox_dir failed to restart AFTER updating InnoDB options" );
+		}
+
+    return;
+}
+
+### INTERNAL UTILITY ###
+# Usage      : _install_scaledb_prereq( $param_href )
+# Purpose    : installs prerequisites for installing MariaDb with ScaleDB ()
+# Returns    : hash with flags
+# Parameters : $param_href
+# Throws     : dies if not sudo permissions
+# Comments   : first part of install_scaledb() mode
+# See Also   : install_scaledb() mode
+sub _install_scaledb_prereq {
+    die('_install_scaledb_prereq() needs $param_href') unless @_ == 1;
+    my ($param_href) = @_;
+	my %flags;
+
+	#install prerequisites for ScaleDB
+	# check OS version
+	$flags{installer} = do {
+		if    (-e '/etc/debian_version') { 'apt-get' }
+		elsif (-e '/etc/centos-release') { 'yum' }
+		elsif (-e '/etc/redhat-release') { 'yum' }
+		else                             { 'yum' }
+	};
+
+	#install nc, nmap, libaio
+	my $cmd_nc = "sudo $flags{installer} -y install nmap nc nettools libaio libaio1 nmap-ncat";
+	my $exit_nc = _exec_cmd($cmd_nc, $param_href, 'nc and tools install');
+	$flags{nc} = 1 if $exit_nc == 0;
+
+    return %flags;
+}
 
 
 
@@ -1699,7 +1899,7 @@ MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox us
 
  MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_
 
- MySQLinstall.pm --mode=edit_tokudb --opt=/home/msestak/opt/mysql/5.6.25/ --sand=/home/msestak/sandboxes/msb_5_6_25/
+ MySQLinstall.pm --mode=edit_tokudb --optedit=/home/msestak/opt/mysql/5.6.25/ --sandedit=/home/msestak/sandboxes/msb_5_6_25/
 
  MySQLinstall.pm --mode=edit_deep -i deep-mysql-5.6.25-community-plugin-3.2.0.19654-1.el6.x86_64.rpm --sand=/msestak/sandboxes/msb_5_6_25/ --opt=/msestak/opt/mysql/5.6.25/
  or with reporting

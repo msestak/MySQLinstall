@@ -17,6 +17,7 @@ requires 'Log::Log4perl';
 requires 'File::Find::Rule';
 requires 'IO::Prompter';
 requires 'Config::Std';
+requires 'Config::Crontab';
 
 on 'develop' => sub {
   recommends 'Regexp::Debugger';

@@ -4,19 +4,19 @@ MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox us
 
 # SYNOPSIS
 
-    MySQLinstall --mode=install_sandbox --sandbox=/msestak/sandboxes/ --opt=/msestak/opt/mysql/
+    MySQLinstall.pm --mode=install_sandbox --sandbox=/msestak/sandboxes/ --opt=/msestak/opt/mysql/
 
-    MySQLinstall --mode=wget_mysql -url http://dev.mysql.com/get/Downloads/MySQL-5.5/mysql-5.5.43-linux2.6-x86_64.tar.gz
+    MySQLinstall.pm --mode=wget_mysql -url http://dev.mysql.com/get/Downloads/MySQL-5.5/mysql-5.5.43-linux2.6-x86_64.tar.gz
 
-    MySQLinstall --mode=install_mysql -if ./download/mysql-5.6.26-linux-glibc2.5-x86_64.tar.gz
+    MySQLinstall.pm --mode=install_mysql -if ./download/mysql-5.6.26-linux-glibc2.5-x86_64.tar.gz
 
     MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_
 
-    MySQLinstall --mode=edit_tokudb --opt=/home/msestak/opt/mysql/5.6.25/ --sand=/home/msestak/sandboxes/msb_5_6_25/
+    MySQLinstall.pm --mode=edit_tokudb --optedit=/home/msestak/opt/mysql/5.6.25/ --sandedit=/home/msestak/sandboxes/msb_5_6_25/
 
-    MySQLinstall --mode=edit_deep -i deep-mysql-5.6.25-community-plugin-3.2.0.19654-1.el6.x86_64.rpm --sand=/msestak/sandboxes/msb_5_6_25/ --opt=/msestak/opt/mysql/5.6.25/
+    MySQLinstall.pm --mode=edit_deep -i deep-mysql-5.6.25-community-plugin-3.2.0.19654-1.el6.x86_64.rpm --sand=/msestak/sandboxes/msb_5_6_25/ --opt=/msestak/opt/mysql/5.6.25/
     or with reporting
-    MySQLinstall --mode=edit_deep_report -i ./download/deep-mysql-5.6.26-community-plugin-3.2.0.19896.el6.x86_64.tar.gz --sand=/home/msestak/sandboxes/msb_5_6_26 --opt=/home/msestak/opt/mysql/5.6.26
+    MySQLinstall.pm --mode=edit_deep_report -i ./download/deep-mysql-5.6.26-community-plugin-3.2.0.19896.el6.x86_64.tar.gz --sand=/home/msestak/sandboxes/msb_5_6_26 --opt=/home/msestak/opt/mysql/5.6.26
 
 # DESCRIPTION
 
@@ -31,32 +31,32 @@ MySQLinstall is installation script that installs MySQL::Sandbox using cpanm, My
     --mode=edit_tokudb                     installs Deep plugin
     
     For help write:
-    MySQLinstall -h
-    MySQLinstall -m
+    MySQLinstall.pm -h
+    MySQLinstall.pm -m
 
 ## MODES
 
 - install\_sandbox
 
         # options from command line
-        MySQLinstall --mode=install_sandbox --sandbox=$HOME/sandboxes/ --opt=$HOME/opt/mysql/
+        MySQLinstall.pm --mode=install_sandbox --sandbox=$HOME/sandboxes/ --opt=$HOME/opt/mysql/
 
         # options from config
-        MySQLinstall --mode=install_sandbox
+        MySQLinstall.pm --mode=install_sandbox
 
     Install MySQL::Sandbox, set environment variables (SANDBOX\_HOME and SANBOX\_BINARY) and create these directories if needed.
 
 - wget\_mysql
 
         #option from command line (can also come from config)
-        MySQLinstall --mode=wget_mysql --url http://dev.mysql.com/get/Downloads/MySQL-5.6/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
+        MySQLinstall.pm --mode=wget_mysql --url http://dev.mysql.com/get/Downloads/MySQL-5.6/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
 
     Downloads MySQL binary from internet link. Resumes broken downloads.
 
 - install\_mysql
 
         #option from command line (can also come from config)
-        MySQLinstall --mode=install_mysql --infile mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
+        MySQLinstall.pm --mode=install_mysql --infile mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
 
     Installs MySQL in sandbox named after MySQL version and puts binary into "opt/mysql" directory. It rewrites existing installation.
 
@@ -121,22 +121,22 @@ mocnii <msestak@irb.hr>
     #install all modules
     cpanm -n Path::Tiny Capture::Tiny File::Find::Rule Log::Log4perl Config::Std
 
-    MySQLinstall --mode=install_mysql --in=./download/Percona-Server-5.6.25-rel73.1-Linux.x86_64.ssl101.tar.gz
-    MySQLinstall --mode=edit_tokudb --opt=/home/msestak/opt/mysql/5.6.25/ --sand=/home/msestak/sandboxes/msb_5_6_25/
+    MySQLinstall.pm --mode=install_mysql --in=./download/Percona-Server-5.6.25-rel73.1-Linux.x86_64.ssl101.tar.gz
+    MySQLinstall.pm --mode=edit_tokudb --opt=/home/msestak/opt/mysql/5.6.25/ --sand=/home/msestak/sandboxes/msb_5_6_25/
     
-    MySQLinstall --mode=install_mysql -i mysql-5.6.24-linux-glibc2.5-x86_64.tar.gz
-    MySQLinstall --mode=edit_deep -i deep-mysql-5.6.24-community-plugin-3.2.0.19297-1.el6.x86_64.rpm --sand=/msestak/sandboxes/msb_5_6_24/ --opt=/msestak/opt/mysql/5.6.24/
+    MySQLinstall.pm --mode=install_mysql -i mysql-5.6.24-linux-glibc2.5-x86_64.tar.gz
+    MySQLinstall.pm --mode=edit_deep -i deep-mysql-5.6.24-community-plugin-3.2.0.19297-1.el6.x86_64.rpm --sand=/msestak/sandboxes/msb_5_6_24/ --opt=/msestak/opt/mysql/5.6.24/
 
-    MySQLinstall --mode=install_mysql -i mysql-5.6.24-linux-glibc2.5-x86_64.tar.gz
-    MySQLinstall --mode=edit_deep_report -i deep-mysql-5.6.24-community-plugin-3.2.0.19654.el6.x86_64.tar.gz --sand=/msestak/sandboxes/msb_5_6_24/ --opt=/msestak/opt/mysql/5.6.24/
+    MySQLinstall.pm --mode=install_mysql -i mysql-5.6.24-linux-glibc2.5-x86_64.tar.gz
+    MySQLinstall.pm --mode=edit_deep_report -i deep-mysql-5.6.24-community-plugin-3.2.0.19654.el6.x86_64.tar.gz --sand=/msestak/sandboxes/msb_5_6_24/ --opt=/msestak/opt/mysql/5.6.24/
 
-    MySQLinstall --mode=install_mysql -i ./download/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
-    MySQLinstall --mode=edit_deep_report -i ./download/deep-mysql-5.6.27-community-plugin-3.3.0.20340.el6.x86_64.tar.gz --sand=/home/msestak/sandboxes/msb_5_6_27/ --opt=/home/msestak/opt/mysql/5.6.27/
+    MySQLinstall.pm --mode=install_mysql -i ./download/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
+    MySQLinstall.pm --mode=edit_deep_report -i ./download/deep-mysql-5.6.27-community-plugin-3.3.0.20340.el6.x86_64.tar.gz --sand=/home/msestak/sandboxes/msb_5_6_27/ --opt=/home/msestak/opt/mysql/5.6.27/
 
 # POD ERRORS
 
 Hey! **The above document had some coding errors, which are explained below:**
 
-- Around line 1684:
+- Around line 1890:
 
     Unterminated L< ... > sequence
