@@ -680,7 +680,7 @@ sub _get_sandbox_name_from {
     $log->trace("MySQL binary: $mysql_binary");
 
     # extract version and num from binary
-    ( my $mysql_ver = $mysql_binary ) =~ s/\A.+?-(5\.\d+\.\d+)-.+?\z/$1/;
+    ( my $mysql_ver = $mysql_binary ) =~ s/\A.+?-(5|10\.\d+\.\d+)-.+?\z/$1/;
 	$mysql_ver = $prefix . $mysql_ver;
     $log->trace("MySQL version: $mysql_ver");
     (my $mysql_num = $mysql_ver) =~ s/\.//g;
@@ -1692,8 +1692,11 @@ sub install_scaledb {
 	# install libraries needed by ScaleDB
 	_install_scaledb_prereq( $param_href );
 
+	# repack MariaDB to be usable by MySQL::Sandbox
+	my $maria_end_archive = _repack_maria( $param_href );
+
 	# setup of sandbox and opt names
-	my ( $mysql_ver, $mysql_num, $sandbox_path, $opt_path ) = _get_sandbox_name_from( $infile, $prefix );
+	my ( $mysql_ver, $mysql_num, $sandbox_path, $opt_path ) = _get_sandbox_name_from( $maria_end_archive, $prefix );
 
 	# check for existence of sandbox dir
     if (-d $sandbox_path) {
@@ -1848,7 +1851,7 @@ SQL
 # Purpose    : installs prerequisites for installing MariaDb with ScaleDB ()
 # Returns    : hash with flags
 # Parameters : $param_href
-# Throws     : dies if not sudo permissions
+# Throws     :
 # Comments   : first part of install_scaledb() mode
 # See Also   : install_scaledb() mode
 sub _install_scaledb_prereq {
@@ -1871,6 +1874,69 @@ sub _install_scaledb_prereq {
 	$flags{nc} = 1 if $exit_nc == 0;
 
     return %flags;
+}
+
+### INTERNAL UTILITY ###
+# Usage      : _repack_maria( $param_href )
+# Purpose    : repacks MariaDB to be installable my MySQL::Sandbox
+# Returns    : nothing
+# Parameters : $param_href
+# Throws     : 
+# Comments   : second utility of install_scaledb() mode
+# See Also   : install_scaledb() mode
+sub _repack_maria {
+    my $log = Log::Log4perl::get_logger("main");
+    die('_repack_maria() needs $param_href') unless @_ == 1;
+    my ($param_href) = @_;
+	my %flags;
+
+    my $mariadb_org_path = $param_href->{infile};
+	my $mariadb_archive = path($mariadb_org_path)->basename;
+	say "ORG:$mariadb_archive";
+	my ($maria_end_path) = $mariadb_archive =~ m{scaledb\-(?:[^-]+)\-(.+?)\.(?:tgz|tar\.gz)\z};
+	say "New path:$maria_end_path";
+	$maria_end_path = path($ENV{HOME}, $maria_end_path)->canonpath;
+	say "New path:$maria_end_path";
+	my $maria_end_archive = $maria_end_path . '.tar.gz';
+	$maria_end_archive = path($maria_end_archive)->canonpath;
+
+	#scaledb-15.10.1-mariadb-10.0.14.tgz
+	
+	# check for existence of tmp dir
+	my $tmp_dir = path('/tmp/maria/');
+    if (-d $tmp_dir) {
+        $log->warn( "Report: tmpdir $tmp_dir already exists" );
+		path($tmp_dir)->remove_tree( { safe => 0 } ) and $log->warn( "$tmp_dir deleted!" );   # force remove
+	}
+
+	# untar MariaDB to repack it later
+	my $cmd_untar = "mkdir /tmp/maria && tar -xzf $mariadb_org_path -C /tmp/maria";
+	my $exit_untar = _exec_cmd($cmd_untar, $param_href, 'untar mariadb');
+	$flags{untar} = 1 if $exit_untar == 0;
+
+	# tar MariaDB to use it by MySQL::Sandbox
+	my $cmd_tar = "cd /tmp/maria/usr/local/mysql/ && tar -czf $maria_end_archive *";
+	my $exit_tar = _exec_cmd($cmd_tar, $param_href, 'tar mariadb');
+	$flags{tar} = 1 if $exit_untar == 0;
+
+	#change path 
+	#cd && mkdir $maria_end_path
+	my $cmd_cd = "cd && mkdir -p $maria_end_path";
+	my $exit_cd = _exec_cmd($cmd_cd, $param_href, 'mariadb dir created');
+	$flags{cd} = 1 if $exit_cd == 0;
+
+	# untar MariaDB to repack it later
+	my $cmd_untar2 = "tar -xzf $maria_end_archive -C $maria_end_path";
+	my $exit_untar2 = _exec_cmd($cmd_untar2, $param_href, 'untar mariadb');
+	$flags{untar2} = 1 if $exit_untar2 == 0;
+
+	# tar MariaDB to use it by MySQL::Sandbox
+	my $cmd_tar2 = "cd && tar -czf $maria_end_archive $maria_end_path";
+	my $exit_tar2 = _exec_cmd($cmd_tar2, $param_href, 'tar mariadb');
+	$flags{tar2} = 1 if $exit_untar2 == 0;
+
+	say "Maria END archive path:$maria_end_archive";
+    return $maria_end_archive;
 }
 
 
