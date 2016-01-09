@@ -680,7 +680,7 @@ sub _get_sandbox_name_from {
     $log->trace("MySQL binary: $mysql_binary");
 
     # extract version and num from binary
-    ( my $mysql_ver = $mysql_binary ) =~ s/\A.+?-(5|10\.\d+\.\d+)-.+?\z/$1/;
+    ( my $mysql_ver = $mysql_binary ) =~ s/\A.+?-(5\.\d+\.\d+)-.+?\z/$1/;
 	$mysql_ver = $prefix . $mysql_ver;
     $log->trace("MySQL version: $mysql_ver");
     (my $mysql_num = $mysql_ver) =~ s/\.//g;
@@ -701,6 +701,46 @@ sub _get_sandbox_name_from {
 
 }
 
+
+### INTERNAL UTILITY ###
+# Usage      : my ( $mysql_ver, $mysql_num, $sandbox_path, $opt_path ) = _get_sandbox_name_from_maria( $infile );
+# Purpose    : returns sandbox and opt path from binary and SANDBOX_HOME and SANDBOX_BINARY variables
+# Returns    : $mysql_ver, $mysql_num, $sandbox_path, $opt_path
+# Parameters : ( $infile ) location of MariaDB binary
+# Throws     : croaks for wrong num of parameters
+# Comments   : part of install_mysql mode
+# See Also   : install_mysql()
+sub _get_sandbox_name_from_maria {
+    my $log = Log::Log4perl::get_logger("main");
+    $log->logcroak('_get_sandbox_name_from() needs a $infile') unless @_ == 1 or 2;
+    my $infile = shift;
+	my $prefix = shift // ''; 
+
+    # get name of MariaDB binary without location
+    my $mysql_binary = path($infile)->basename;
+    $log->trace("MariaDB binary: $mysql_binary");
+
+    # extract version and num from binary
+    ( my $mysql_ver = $mysql_binary ) =~ s/\A(?:[^\d]+)(\d+\.\d+\.\d+).+\z/$1/;
+	$mysql_ver = $prefix . $mysql_ver;
+    $log->trace("MariaDB version: $mysql_ver");
+    (my $mysql_num = $mysql_ver) =~ s/\.//g;
+	($mysql_num) = ($mysql_num =~ m/\A\D*(\d+)\z/);
+    $log->trace( "MariaDB num: $mysql_num" );
+
+    # get opt path
+    my $opt_path = path( $ENV{SANDBOX_BINARY}, $mysql_ver );
+    $log->trace("Specific SANDBOX_BINARY path: $opt_path");
+
+    # get sandbox home path
+    ( my $sandbox_name = $mysql_ver ) =~ s/\./_/g;
+    $log->trace("Sandbox name: $sandbox_name");
+    my $sandbox_path = path( $ENV{SANDBOX_HOME}, 'msb_' . $sandbox_name );
+    $log->trace("Specific SANDBOX_HOME path: $sandbox_path");
+
+    return $mysql_ver, $mysql_num, $sandbox_path, $opt_path;
+
+}
 
 
 ### CLASS METHOD/INSTANCE METHOD/INTERFACE SUB/INTERNAL UTILITY ###
@@ -1696,7 +1736,7 @@ sub install_scaledb {
 	my $maria_end_archive = _repack_maria( $param_href );
 
 	# setup of sandbox and opt names
-	my ( $mysql_ver, $mysql_num, $sandbox_path, $opt_path ) = _get_sandbox_name_from( $maria_end_archive, $prefix );
+	my ( $mysql_ver, $mysql_num, $sandbox_path, $opt_path ) = _get_sandbox_name_from_maria( $maria_end_archive, $prefix );
 
 	# check for existence of sandbox dir
     if (-d $sandbox_path) {
@@ -1712,7 +1752,7 @@ sub install_scaledb {
 	#set variables for sandbox, opt, new port
 	my ($sandbox_port, $sandbox_dir, $opt_basedir);
     $log->info( "Action: installing $mysql_ver with port checking and prefix={$prefix}" );
-    my $cmd_make = qq{make_sandbox --export_binaries $infile --add_prefix=$prefix -- --check_port --no_confirm};
+    my $cmd_make = qq{make_sandbox --export_binaries $maria_end_archive --add_prefix=$prefix -- --check_port --no_confirm};
     my ($stdout, $stderr, $exit) = _capture_output( $cmd_make, $param_href );
     if ($exit == 0) {
         #install succeeded

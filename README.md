@@ -137,6 +137,6 @@ mocnii <msestak@irb.hr>
 
 Hey! **The above document had some coding errors, which are explained below:**
 
-- Around line 1942:
+- Around line 1996:
 
     Unterminated L< ... > sequence
