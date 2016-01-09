@@ -287,12 +287,12 @@ sub init_logging {
       log4perl.appender.Logfile.umask     = 0022
       log4perl.appender.Logfile.header_text = INVOCATION:$0 @ARGV
       log4perl.appender.Logfile.layout    = Log::Log4perl::Layout::PatternLayout
-      log4perl.appender.Logfile.layout.ConversionPattern = [%d{yyyy/MM/dd HH:mm:ss,SSS}]%m%n
+      log4perl.appender.Logfile.layout.ConversionPattern = [%d{yyyy/MM/dd HH:mm:ss,SSS}]%5p> %M line:%L==>%m%n
      
       log4perl.appender.Screen            = Log::Log4perl::Appender::ScreenColoredLevels
       log4perl.appender.Screen.stderr     = 1
       log4perl.appender.Screen.layout     = Log::Log4perl::Layout::PatternLayout
-      log4perl.appender.Screen.layout.ConversionPattern  = [%d{yyyy/MM/dd HH:mm:ss,SSS}]%m%n
+      log4perl.appender.Screen.layout.ConversionPattern  = [%d{yyyy/MM/dd HH:mm:ss,SSS}]%5p> %M line:%L==>%m%n
     );
 
     # ... passed as a reference to init()
