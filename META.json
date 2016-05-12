@@ -4,7 +4,7 @@
       "tar.gz"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Minilla/v2.5.0, CPAN::Meta::Converter version 2.143240",
+   "generated_by" : "Minilla/v3.0.1, CPAN::Meta::Converter version 2.150001",
    "license" : [
       "perl_5"
    ],
@@ -76,6 +76,6 @@
    },
    "version" : "0.01",
    "x_contributors" : [
-      "mocnii <msestak@irb.hr>"
+      "Martin Sebastijan Šestak <msestak@irb.hr>"
    ]
 }

@@ -82,6 +82,12 @@ MySQLinstall is installation script that installs MySQL::Sandbox using cpanm, My
 
     Installs Deep storage engine from downloaded tar.gz archive. It also updates MySQL config for Deep setting it as default\_storage\_engine (and for tmp tables too).
 
+- install\_scaledb
+
+        MySQLinstall.pm --mode=install_scaledb -if /home/msestak/scaledb-15.10.1-mariadb-10.0.14.tgz --prefix=scaledb_ --plugin=/home/msestak/scaledb-15.10.1-13199-ude.tgz
+
+    Installs MariaDB with ScaleDB storage engine from downloaded tar.gz archive. It also updates MySQL config for ScaleDB setting it as default\_storage\_engine (and for tmp tables too).
+
 # CONFIGURATION
 
 All configuration in set in mysqlinstall.cnf that is found in ./lib directory (it can also be set with --config option on command line). It follows [Config::Std](https://metacpan.org/pod/Config::Std) format and rules.
@@ -137,6 +143,6 @@ mocnii <msestak@irb.hr>
 
 Hey! **The above document had some coding errors, which are explained below:**
 
-- Around line 1996:
+- Around line 2080:
 
     Unterminated L< ... > sequence

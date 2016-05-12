@@ -162,6 +162,7 @@ sub get_parameters_from_cmd {
         'out|o=s'       => \$cli{out},
         'outfile|of=s'  => \$cli{outfile},
 		'prefix=s'      => \$cli{prefix},
+		'plugin=s'      => \$cli{plugin},
 
         'host|h=s'      => \$cli{host},
         'database|d=s'  => \$cli{database},
@@ -1735,6 +1736,9 @@ sub install_scaledb {
 	# repack MariaDB to be usable by MySQL::Sandbox
 	my $maria_end_archive = _repack_maria( $param_href );
 
+	# repack ScaldDB UDE to the installed sandbox
+	my $scaledb_end_archive = _repack_scaledb( $param_href );
+
 	# setup of sandbox and opt names
 	my ( $mysql_ver, $mysql_num, $sandbox_path, $opt_path ) = _get_sandbox_name_from_maria( $maria_end_archive, $prefix );
 
@@ -1874,14 +1878,17 @@ SQL
     #restart MySQl to check if config ok
     my $cmd_restart = path($sandbox_dir, 'restart');
     my ($stdout_res, $stderr_res, $exit_res) = _capture_output( $cmd_restart, $param_href );
-        if ($exit_res == 0) {
-                #restart succeeded
-                $log->warn( "Action: sandbox $sandbox_dir restarted with MySQL in $opt_basedir port{$sandbox_port}" );
-        }
-		else {
-			#restart failed
-			$log->logexit( "Error: sandbox $sandbox_dir failed to restart AFTER updating InnoDB options" );
-		}
+    if ($exit_res == 0) {
+            #restart succeeded
+            $log->warn( "Action: sandbox $sandbox_dir restarted with MySQL in $opt_basedir port{$sandbox_port}" );
+    }
+	else {
+		#restart failed
+		$log->logexit( "Error: sandbox $sandbox_dir failed to restart AFTER updating InnoDB options" );
+	}
+
+	# unpack ScaleDB plugin on top of MariaDB installation
+	_extract_to_sandbox();
 
     return;
 }
@@ -1978,6 +1985,83 @@ sub _repack_maria {
 	say "Maria END archive path:$maria_end_archive";
     return $maria_end_archive;
 }
+
+
+### INTERNAL UTILITY ###
+# Usage      : _repack_scaledb( $param_href )
+# Purpose    : repacks MariaDB to be installable my MySQL::Sandbox
+# Returns    : nothing
+# Parameters : $param_href
+# Throws     : 
+# Comments   : second utility of install_scaledb() mode
+# See Also   : install_scaledb() mode
+sub _repack_scaledb {
+    my $log = Log::Log4perl::get_logger("main");
+    die('_repack_scaledb() needs $param_href') unless @_ == 1;
+    my ($param_href) = @_;
+	my %flags;
+
+    my $scaledb_org_path = $param_href->{plugin};
+	my $scaledb_archive = path($scaledb_org_path)->basename;
+	say "ORG:$scaledb_archive";
+	my ($scaledb_end_path) = $scaledb_archive =~ m{(.+?)(?:tgz|tar\.gz)\z};
+	say "New path:$scaledb_end_path";
+	$scaledb_end_path = path($ENV{HOME}, $scaledb_end_path)->canonpath;
+	say "New path:$scaledb_end_path";
+	my $scaledb_end_archive = $scaledb_end_path . '.tar.gz';
+	$scaledb_end_archive = path($scaledb_end_archive)->canonpath;
+
+	#scaledb-15.10.1-13199-ude.tgz
+	
+	# check for existence of tmp dir
+	my $tmp_dir = path('/tmp/scaledb/');
+    if (-d $tmp_dir) {
+        $log->warn( "Report: tmpdir $tmp_dir already exists" );
+		path($tmp_dir)->remove_tree( { safe => 0 } ) and $log->warn( "$tmp_dir deleted!" );   # force remove
+	}
+
+	# untar ScaleDB plugin to repack it later
+	my $cmd_untar = "mkdir /tmp/scaledb && tar -xzf $scaledb_org_path -C /tmp/scaledb";
+	my $exit_untar = _exec_cmd($cmd_untar, $param_href, 'untar scaledb');
+	$flags{untar} = 1 if $exit_untar == 0;
+
+	# tar ScaleDB plugin to use it by MySQL::Sandbox
+	my $cmd_tar = "cd /tmp/scaledb/usr/local/scaledb/ && tar -czf $scaledb_end_archive *";
+	my $exit_tar = _exec_cmd($cmd_tar, $param_href, 'tar scaledb');
+	$flags{tar} = 1 if $exit_untar == 0;
+
+	#change path 
+	#cd && mkdir $scaledb_end_path
+	my $cmd_cd = "cd && mkdir -p $scaledb_end_path";
+	my $exit_cd = _exec_cmd($cmd_cd, $param_href, 'scaledb dir created');
+	$flags{cd} = 1 if $exit_cd == 0;
+
+	# untar ScaleDB plugin to repack it later
+	my $cmd_untar2 = "tar -xzf $scaledb_end_archive -C $scaledb_end_path";
+	my $exit_untar2 = _exec_cmd($cmd_untar2, $param_href, 'untar scaledb');
+	$flags{untar2} = 1 if $exit_untar2 == 0;
+
+	# tar ScaleDB plugin to use it by MySQL::Sandbox
+	my $cmd_tar2 = "cd && tar -czf $scaledb_end_archive $scaledb_end_path";
+	my $exit_tar2 = _exec_cmd($cmd_tar2, $param_href, 'tar scaledb');
+	$flags{tar2} = 1 if $exit_untar2 == 0;
+
+	say "ScaleDB END archive path:$scaledb_end_archive";
+    return $scaledb_end_archive;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2077,6 +2161,12 @@ Installs TokuDB storage engine if transparent_hugepage=never is already set. It 
  MySQLinstall.pm --mode=edit_deep_report --infile=./download/deep-mysql-5.6.26-community-plugin-3.2.0.19896.el6.x86_64.tar.gz --sandedit=/home/msestak/sandboxes/msb_5_6_27 --optedit=/home/msestak/opt/mysql/5.6.27
 
 Installs Deep storage engine from downloaded tar.gz archive. It also updates MySQL config for Deep setting it as default_storage_engine (and for tmp tables too).
+
+=item install_scaledb
+
+ MySQLinstall.pm --mode=install_scaledb -if /home/msestak/scaledb-15.10.1-mariadb-10.0.14.tgz --prefix=scaledb_ --plugin=/home/msestak/scaledb-15.10.1-13199-ude.tgz
+
+Installs MariaDB with ScaleDB storage engine from downloaded tar.gz archive. It also updates MySQL config for ScaleDB setting it as default_storage_engine (and for tmp tables too).
 
 =back
 
