@@ -932,7 +932,7 @@ SQL
     foreach my $i (0..1) {
         my $log_file = path($mysql_datadir, 'ib_logfile' . $i);
         unlink $log_file and $log->trace( "Action: InnoDB logfile $log_file deleted" ) 
-          or $log->logdie( "Error: InnoDB file: $log_file not found: $!" );
+          or $log->error( "Error: InnoDB file: $log_file not found: $!" );
     }
 
     #restart MySQl to check if config ok
