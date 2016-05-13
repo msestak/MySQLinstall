@@ -6,11 +6,13 @@ MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox us
 
     MySQLinstall.pm --mode=install_sandbox --sandbox=/msestak/sandboxes/ --opt=/msestak/opt/mysql/
 
-    MySQLinstall.pm --mode=wget_mysql -url http://dev.mysql.com/get/Downloads/MySQL-5.5/mysql-5.5.43-linux2.6-x86_64.tar.gz
+    MySQLinstall.pm --mode=wget_mysql -url http://downloads.mysql.com/archives/get/file/mysql-5.6.29-linux-glibc2.5-x86_64.tar.gz
+    MySQLinstall.pm --mode=wget_mysql -url https://www.percona.com/downloads/Percona-Server-5.6/Percona-Server-5.6.29-76.2/binary/tarball/Percona-Server-5.6.29-rel76.2-Linux.x86_64.ssl101.tar.gz
 
-    MySQLinstall.pm --mode=install_mysql -if ./download/mysql-5.6.26-linux-glibc2.5-x86_64.tar.gz
+    MySQLinstall.pm --mode=install_mysql --infile=mysql-5.6.29-linux-glibc2.5-x86_64.tar.gz
 
-    MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_
+    MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=deep_ --infile=mysql-5.6.28-linux-glibc2.5-x86_64.tar.gz
+    MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_ --infile=Percona-Server-5.6.29-rel76.2-Linux.x86_64.ssl101.tar.gz
 
     MySQLinstall.pm --mode=edit_tokudb --optedit=/home/msestak/opt/mysql/5.6.25/ --sandedit=/home/msestak/sandboxes/msb_5_6_25/
 
@@ -24,11 +26,10 @@ MySQLinstall is installation script that installs MySQL::Sandbox using cpanm, My
 
     --mode=mode                            Description
     --mode=install_sandbox         installs MySQL::Sandbox and prompts for modification of .bashrc
-    --mode=wget_mysql                      downloads MySQL from Oracle
-    --mode=wget_percona            downloads Percona Server with TokuDB
+    --mode=wget_mysql                      downloads MySQL from Oracle or Percona serer from Percona site
     --mode=install_mysql           installs MySQL and modifies my.cnf for performance
-    --mode=edit_deep_report        installs TokuDB plugin
-    --mode=edit_tokudb                     installs Deep plugin
+    --mode=edit_deep_report        installs Deep plugin
+    --mode=edit_tokudb                     installs TokuDB plugin
     
     For help write:
     MySQLinstall.pm -h
@@ -62,28 +63,26 @@ MySQLinstall is installation script that installs MySQL::Sandbox using cpanm, My
 
 - install\_mysql\_with\_prefix
 
-        MySQLinstall.pm --mode=install_mysql_with_prefix
-        MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_
-        MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=deep_
+        MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=deep_ --infile=mysql-5.6.28-linux-glibc2.5-x86_64.tar.gz
+        MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_ --infile=Percona-Server-5.6.29-rel76.2-Linux.x86_64.ssl101.tar.gz
 
     Installs MySQL with port checking and prefix. It doesn't rewrite previous MySQL instance. Useful for installing multiple MySQL servers with same version but different storage engines.
 
 - edit\_tokudb
 
-        MySQLinstall.pm --mode=edit_tokudb
         MySQLinstall.pm --mode=edit_tokudb --sandedit=/home/msestak/sandboxes/msb_5_6_27 --optedit=/home/msestak/opt/mysql/5.6.27
 
     Installs TokuDB storage engine if transparent\_hugepage=never is already set. It also updates MySQL config for TokuDB setting it as default\_storage\_engine (and for tmp tables too).
 
 - edit\_deep\_report
 
-        MySQLinstall.pm --mode=edit_deep_report
         MySQLinstall.pm --mode=edit_deep_report --infile=./download/deep-mysql-5.6.26-community-plugin-3.2.0.19896.el6.x86_64.tar.gz --sandedit=/home/msestak/sandboxes/msb_5_6_27 --optedit=/home/msestak/opt/mysql/5.6.27
 
     Installs Deep storage engine from downloaded tar.gz archive. It also updates MySQL config for Deep setting it as default\_storage\_engine (and for tmp tables too).
 
 - install\_scaledb
 
+        # not finished (doesn't work)
         MySQLinstall.pm --mode=install_scaledb -if /home/msestak/scaledb-15.10.1-mariadb-10.0.14.tgz --prefix=scaledb_ --plugin=/home/msestak/scaledb-15.10.1-13199-ude.tgz
 
     Installs MariaDB with ScaleDB storage engine from downloaded tar.gz archive. It also updates MySQL config for ScaleDB setting it as default\_storage\_engine (and for tmp tables too).
@@ -96,20 +95,25 @@ Example:
     [General]
     sandbox  = /home/msestak/sandboxes
     opt      = /home/msestak/opt/mysql
-    url      = http://dev.mysql.com/get/Downloads/MySQL-5.6/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
-    #url      = https://www.percona.com/downloads/Percona-Server-5.6/Percona-Server-5.6.27-75.0/binary/tarball/Percona-Server-5.6.27-rel75.0-Linux.x86_64.ssl101.tar.gz
-    out      = /msestak/gitdir/MySQLinstall
-    infile   = $HOME/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
+    #url      = http://downloads.mysql.com/archives/get/file/mysql-5.6.29-linux-glibc2.5-x86_64.tar.gz
+    #url      = https://www.percona.com/downloads/Percona-Server-5.6/Percona-Server-5.6.29-76.2/binary/tarball/Percona-Server-5.6.29-rel76.2-Linux.x86_64.ssl101.tar.gz
+    #out      = /msestak/gitdir/MySQLinstall
+    #infile   = mysql-5.6.29-linux-glibc2.5-x86_64.tar.gz
+    #infile   = Percona-Server-5.6.29-rel76.2-Linux.x86_64.ssl101.tar.gz
+    #sandedit = /home/msestak/sandboxes/msb_5_6_29
+    #optedit  = /home/msestak/opt/mysql/5.6.29
+    #plugin   = /home/msestak/scaledb-15.10.1-13199-ude.tgz
     
     [Database]
     host     = localhost
     database = test
     user     = msandbox
     password = msandbox
-    port     = 5625
-    socket   = /tmp/mysql_sandbox5625.sock
+    port     = 5629
+    socket   = /tmp/mysql_sandbox5629.sock
     innodb   = 1G
     prefix   = tokudb_
+    #prefix   = deep_
 
 # LICENSE
 
@@ -121,23 +125,6 @@ it under the same terms as Perl itself.
 # AUTHOR
 
 mocnii <msestak@irb.hr>
-
-# EXAMPLE
-
-    #install all modules
-    cpanm -n Path::Tiny Capture::Tiny File::Find::Rule Log::Log4perl Config::Std
-
-    MySQLinstall.pm --mode=install_mysql --in=./download/Percona-Server-5.6.25-rel73.1-Linux.x86_64.ssl101.tar.gz
-    MySQLinstall.pm --mode=edit_tokudb --opt=/home/msestak/opt/mysql/5.6.25/ --sand=/home/msestak/sandboxes/msb_5_6_25/
-    
-    MySQLinstall.pm --mode=install_mysql -i mysql-5.6.24-linux-glibc2.5-x86_64.tar.gz
-    MySQLinstall.pm --mode=edit_deep -i deep-mysql-5.6.24-community-plugin-3.2.0.19297-1.el6.x86_64.rpm --sand=/msestak/sandboxes/msb_5_6_24/ --opt=/msestak/opt/mysql/5.6.24/
-
-    MySQLinstall.pm --mode=install_mysql -i mysql-5.6.24-linux-glibc2.5-x86_64.tar.gz
-    MySQLinstall.pm --mode=edit_deep_report -i deep-mysql-5.6.24-community-plugin-3.2.0.19654.el6.x86_64.tar.gz --sand=/msestak/sandboxes/msb_5_6_24/ --opt=/msestak/opt/mysql/5.6.24/
-
-    MySQLinstall.pm --mode=install_mysql -i ./download/mysql-5.6.27-linux-glibc2.5-x86_64.tar.gz
-    MySQLinstall.pm --mode=edit_deep_report -i ./download/deep-mysql-5.6.27-community-plugin-3.3.0.20340.el6.x86_64.tar.gz --sand=/home/msestak/sandboxes/msb_5_6_27/ --opt=/home/msestak/opt/mysql/5.6.27/
 
 # POD ERRORS
 
