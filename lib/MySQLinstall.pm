@@ -29,7 +29,7 @@ our @EXPORT_OK = qw{
   install_mysql_with_prefix
   edit_tokudb
   edit_deep_report
-  install_scaledb
+  install_mariadb
 
 };
 
@@ -89,7 +89,7 @@ sub run {
         install_mysql_with_prefix => \&install_mysql_with_prefix,    # installs MySQL with different port and prefix
         edit_tokudb               => \&edit_tokudb,                  # install TokuDB storage engine with Percona
         edit_deep_report          => \&edit_deep_report,             # install Deep engine (with reporting to deep.is)
-        install_scaledb           => \&install_scaledb,              # install MariaDB with ScaleDB engine
+        install_mariadb           => \&install_mariadb,              # install MariaDB with prefix
 
     );
 
@@ -2064,7 +2064,7 @@ sub install_mariadb {
     $log->logcroak ('install_mariadb() needs a $param_href' ) unless @_ == 1;
     my ( $param_href ) = @_;
     my $infile = $param_href->{infile} or $log->logcroak( 'no $infile specified on command line!' );
-    my $prefix = $param_href->{prefix} or $log->logcroak( 'no $prefix specified on command line!' );
+    my $prefix = $param_href->{prefix} // '';
     my $opt = $param_href->{opt}       or $log->logcroak( 'no $opt specified on command line!' );
 
 	# setup of sandbox and opt names
