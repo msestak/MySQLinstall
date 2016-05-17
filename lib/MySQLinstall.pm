@@ -2064,8 +2064,8 @@ sub install_mariadb {
     $log->logcroak ('install_mariadb() needs a $param_href' ) unless @_ == 1;
     my ( $param_href ) = @_;
     my $infile = $param_href->{infile} or $log->logcroak( 'no $infile specified on command line!' );
-    my $prefix = $param_href->{prefix} // '';
-    my $opt = $param_href->{opt}       or $log->logcroak( 'no $opt specified on command line!' );
+    my $prefix = $param_href->{prefix} or $log->logcroak( 'no $prefix specified on command line!' );
+    my $opt    = $param_href->{opt}    or $log->logcroak( 'no $opt specified on command line!' );
 
 	# setup of sandbox and opt names
 	my ( $mysql_ver, $mysql_num, $sandbox_path, $opt_path ) = _get_sandbox_name_from_maria( $infile, $prefix );
@@ -2104,10 +2104,10 @@ sub install_mariadb {
 			}
 		}   # end while
 
-        $log->info( "Report: sandbox installed in $sandbox_dir with MySQL in $opt_basedir port:{$sandbox_port}" );
+        $log->info( "Report: sandbox installed in $sandbox_dir with MariaDB in $opt_basedir port:{$sandbox_port}" );
     }
 	else {
-		$log->error( "Error: MySQL$mysql_ver failed to install" );
+		$log->error( "Error: MariaDB$mysql_ver failed to install" );
 		$log->logexit( "Error: $stderr" );
 	}
 
@@ -2259,8 +2259,6 @@ MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox us
 
  MySQLinstall.pm --mode=edit_tokudb --optedit=/home/msestak/opt/mysql/5.6.25/ --sandedit=/home/msestak/sandboxes/msb_5_6_25/
 
- MySQLinstall.pm --mode=edit_deep -i deep-mysql-5.6.25-community-plugin-3.2.0.19654-1.el6.x86_64.rpm --sand=/msestak/sandboxes/msb_5_6_25/ --opt=/msestak/opt/mysql/5.6.25/
- or with reporting
  MySQLinstall.pm --mode=edit_deep_report -i ./download/deep-mysql-5.6.26-community-plugin-3.2.0.19896.el6.x86_64.tar.gz --sand=/home/msestak/sandboxes/msb_5_6_26 --opt=/home/msestak/opt/mysql/5.6.26
 
 
@@ -2272,6 +2270,7 @@ MySQLinstall is installation script that installs MySQL::Sandbox using cpanm, My
  --mode=install_sandbox		installs MySQL::Sandbox and prompts for modification of .bashrc
  --mode=wget_mysql			downloads MySQL from Oracle or Percona serer from Percona site
  --mode=install_mysql		installs MySQL and modifies my.cnf for performance
+ --mode=install_mariadb		installs MariaDB and modifies my.cnf for performance
  --mode=edit_deep_report	installs Deep plugin
  --mode=edit_tokudb			installs TokuDB plugin
  
@@ -2326,12 +2325,11 @@ Installs TokuDB storage engine if transparent_hugepage=never is already set. It 
 
 Installs Deep storage engine from downloaded tar.gz archive. It also updates MySQL config for Deep setting it as default_storage_engine (and for tmp tables too).
 
-=item install_scaledb
+=item install_mariadb
 
- # not finished (doesn't work)
- MySQLinstall.pm --mode=install_scaledb -if /home/msestak/scaledb-15.10.1-mariadb-10.0.14.tgz --prefix=scaledb_ --plugin=/home/msestak/scaledb-15.10.1-13199-ude.tgz
+ MySQLinstall.pm --mode=install_mariadb --infile=$HOME/download/mariadb-10.1.14-linux-x86_64.tar.gz --prefix=mariadb_
 
-Installs MariaDB with ScaleDB storage engine from downloaded tar.gz archive. It also updates MySQL config for ScaleDB setting it as default_storage_engine (and for tmp tables too).
+Installs MariaDB from downloaded tar.gz archive.
 
 =back
 
@@ -2360,7 +2358,7 @@ Example:
  port     = 5629
  socket   = /tmp/mysql_sandbox5629.sock
  innodb   = 1G
- prefix   = tokudb_
+ #prefix   = tokudb_
  #prefix   = deep_
 
 
