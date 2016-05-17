@@ -163,6 +163,9 @@ sub get_parameters_from_cmd {
         'outfile|of=s'  => \$cli{outfile},
 		'prefix=s'      => \$cli{prefix},
 		'plugin=s'      => \$cli{plugin},
+		'innodb=s'      => \$cli{innodb},
+		'tokudb=s'      => \$cli{tokudb},
+		'deep=s'        => \$cli{deep},
 
         'host|h=s'      => \$cli{host},
         'database|d=s'  => \$cli{database},
@@ -850,6 +853,7 @@ sub install_mysql_with_prefix {
     open my $sandbox_cnf_fh, ">>", $mysql_cnf_path or $log->logdie( "Can't find cnf: $!" );
 	#set innodb-buffer-pool-size
 	my $innodb_buffer = defined $param_href->{innodb} ? $param_href->{innodb} : '1G';
+	my $tokudb_buffer = defined $param_href->{tokudb} ? $param_href->{tokudb} : '1G';
 
 my $cnf_options = <<"SQL";
 
@@ -912,7 +916,7 @@ slow-query-log                 = off
 performance_schema             = off
 
 # TokuDB #
-#tokudb_cache_size              = 1G
+#tokudb_cache_size              = $tokudb_buffer
 #tokudb_data_dir                = $sandbox_dir/data
 #tokudb_log_dir                 = $sandbox_dir/data
 #tokudb_tmp_dir                 = $sandbox_dir/data
@@ -1670,6 +1674,7 @@ sub _deep_install_and_enable_options {
     }
 
     #update MySQL config files with Deep options
+	my $deep_buffer = defined $param_href->{deep} ? $param_href->{deep} : '1G';
     my $config_path = path( $sandedit, 'my.sandbox.cnf' );
     open my $sandbox_cnf_fh, ">>", $config_path or $log->logdie("Can't find my.sandbox.cnf at $config_path: $!");
     my $cnf_activation = <<"SQL";
@@ -1678,7 +1683,7 @@ sub _deep_install_and_enable_options {
 deep-activation-key            = 01010100a0y13000006QeuR1463097600
 deep_mode_key_compress         = ON
 deep_mode_value_compress       = ON
-deep_cache_size                = 1G
+deep_cache_size                = $deep_buffer
 default_storage_engine         = Deep
 default_tmp_storage_engine     = Deep
 deep_value_compress_percent    = 15
@@ -2252,15 +2257,13 @@ MySQLinstall - is installation script (modulino) that installs MySQL::Sandbox us
  MySQLinstall.pm --mode=wget_mysql -url http://downloads.mysql.com/archives/get/file/mysql-5.6.29-linux-glibc2.5-x86_64.tar.gz
  MySQLinstall.pm --mode=wget_mysql -url https://www.percona.com/downloads/Percona-Server-5.6/Percona-Server-5.6.29-76.2/binary/tarball/Percona-Server-5.6.29-rel76.2-Linux.x86_64.ssl101.tar.gz
 
- MySQLinstall.pm --mode=install_mysql --infile=mysql-5.6.29-linux-glibc2.5-x86_64.tar.gz
+ MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=deep_ --infile=mysql-5.6.28-linux-glibc2.5-x86_64.tar.gz --innodb=200M --deep=1G
+ MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_ --infile=Percona-Server-5.6.29-rel76.2-Linux.x86_64.ssl101.tar.gz --innodb=200M --tokudb=1G
+ MySQLinstall.pm --mode=install_mariadb --infile=$HOME/download/mariadb-10.1.14-linux-x86_64.tar.gz --prefix=mariadb_ --innodb=200M
 
- MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=deep_ --infile=mysql-5.6.28-linux-glibc2.5-x86_64.tar.gz
- MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_ --infile=Percona-Server-5.6.29-rel76.2-Linux.x86_64.ssl101.tar.gz
+ MySQLinstall.pm --mode=edit_deep_report --infile=deep-deepsql-5.6.28-plugin-21191.el6.x86_64.tar.gz --optedit=/home/msestak/opt/mysql/deep_5.6.28/ --sandedit=/home/msestak/sandboxes/msb_deep_5_6_28/
 
- MySQLinstall.pm --mode=edit_tokudb --optedit=/home/msestak/opt/mysql/5.6.25/ --sandedit=/home/msestak/sandboxes/msb_5_6_25/
-
- MySQLinstall.pm --mode=edit_deep_report -i ./download/deep-mysql-5.6.26-community-plugin-3.2.0.19896.el6.x86_64.tar.gz --sand=/home/msestak/sandboxes/msb_5_6_26 --opt=/home/msestak/opt/mysql/5.6.26
-
+ MySQLinstall.pm --mode=edit_tokudb --optedit=/home/msestak/opt/mysql/tokudb_5.6.29/ --sandedit=/home/msestak/sandboxes/msb_tokudb_5_6_29/
 
 =head1 DESCRIPTION
 
@@ -2308,26 +2311,26 @@ Installs MySQL in sandbox named after MySQL version and puts binary into "opt/my
 
 =item install_mysql_with_prefix
 
- MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=deep_ --infile=mysql-5.6.28-linux-glibc2.5-x86_64.tar.gz
- MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_ --infile=Percona-Server-5.6.29-rel76.2-Linux.x86_64.ssl101.tar.gz
+ MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=deep_ --infile=mysql-5.6.28-linux-glibc2.5-x86_64.tar.gz --innodb=200M --deep=1G
+ MySQLinstall.pm --mode=install_mysql_with_prefix --prefix=tokudb_ --infile=Percona-Server-5.6.29-rel76.2-Linux.x86_64.ssl101.tar.gz --innodb=200M --tokudb=1G
 
 Installs MySQL with port checking and prefix. It doesn't rewrite previous MySQL instance. Useful for installing multiple MySQL servers with same version but different storage engines.
 
 =item edit_tokudb
 
- MySQLinstall.pm --mode=edit_tokudb --sandedit=/home/msestak/sandboxes/msb_5_6_27 --optedit=/home/msestak/opt/mysql/5.6.27
+ MySQLinstall.pm --mode=edit_tokudb --optedit=/home/msestak/opt/mysql/tokudb_5.6.29/ --sandedit=/home/msestak/sandboxes/msb_tokudb_5_6_29/
 
 Installs TokuDB storage engine if transparent_hugepage=never is already set. It also updates MySQL config for TokuDB setting it as default_storage_engine (and for tmp tables too).
 
 =item edit_deep_report
 
- MySQLinstall.pm --mode=edit_deep_report --infile=./download/deep-mysql-5.6.26-community-plugin-3.2.0.19896.el6.x86_64.tar.gz --sandedit=/home/msestak/sandboxes/msb_5_6_27 --optedit=/home/msestak/opt/mysql/5.6.27
+ MySQLinstall.pm --mode=edit_deep_report --infile=deep-deepsql-5.6.28-plugin-21191.el6.x86_64.tar.gz --optedit=/home/msestak/opt/mysql/deep_5.6.28/ --sandedit=/home/msestak/sandboxes/msb_deep_5_6_28/
 
 Installs Deep storage engine from downloaded tar.gz archive. It also updates MySQL config for Deep setting it as default_storage_engine (and for tmp tables too).
 
 =item install_mariadb
 
- MySQLinstall.pm --mode=install_mariadb --infile=$HOME/download/mariadb-10.1.14-linux-x86_64.tar.gz --prefix=mariadb_
+ MySQLinstall.pm --mode=install_mariadb --infile=$HOME/download/mariadb-10.1.14-linux-x86_64.tar.gz --prefix=mariadb_ --innodb=200M
 
 Installs MariaDB from downloaded tar.gz archive.
 
@@ -2358,6 +2361,8 @@ Example:
  port     = 5629
  socket   = /tmp/mysql_sandbox5629.sock
  innodb   = 1G
+ tokudb   = 1G
+ deep     = 1G
  #prefix   = tokudb_
  #prefix   = deep_
 
