@@ -1,6 +1,6 @@
 [General]
-sandbox  = /home/msestak/sandboxes
-opt      = /home/msestak/opt/mysql
+#sandbox  = /home/msestak/sandboxes
+#opt      = /home/msestak/opt/mysql
 #url      = http://downloads.mysql.com/archives/get/file/mysql-5.6.29-linux-glibc2.5-x86_64.tar.gz
 #url      = https://www.percona.com/downloads/Percona-Server-5.6/Percona-Server-5.6.29-76.2/binary/tarball/Percona-Server-5.6.29-rel76.2-Linux.x86_64.ssl101.tar.gz
 #out      = /msestak/gitdir/MySQLinstall
@@ -15,11 +15,11 @@ host     = localhost
 database = test
 user     = msandbox
 password = msandbox
-port     = 5629
-socket   = /tmp/mysql_sandbox5629.sock
-innodb   = 200M
-tokudb   = 1G
-deep     = 1G
+#port     = 5629
+#socket   = /tmp/mysql_sandbox5629.sock
+innodb   = 128M
+tokudb   = 128M
+deep     = 128M
 #prefix   = tokudb_
 #prefix   = deep_
 #prefix   = mariadb_
